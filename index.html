@@ -8,6 +8,9 @@
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0a192f">
   <title>AIML Attendance | BIST Bhopal & BGI</title>
+  <!-- Preconnect to Google Script for faster TLS handshake -->
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
   <style>
     /* ================= LOW-CONNECTIVITY PURE CSS ENGINE (Zero CDN Required) ================= */
     :root {
@@ -79,7 +82,7 @@
       width: 0%;
       background: linear-gradient(90deg, var(--gold), #fbbf24, var(--crimson));
       z-index: 200;
-      transition: width 0.3s ease;
+      transition: width 0.25s ease;
     }
 
     #net-banner {
@@ -108,6 +111,67 @@
       background: #fffbeb;
       color: #92400e;
       border-bottom-color: #fde68a;
+    }
+
+    /* ================= SKELETON SHIMMER ENGINE ================= */
+    @keyframes sk-shimmer {
+      0% {
+        background-position: -200% 0;
+      }
+
+      100% {
+        background-position: 200% 0;
+      }
+    }
+
+    .sk {
+      background: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%);
+      background-size: 200% 100%;
+      animation: sk-shimmer 1.35s infinite linear;
+      border-radius: 8px;
+    }
+
+    .sk-circle {
+      border-radius: 50%;
+    }
+
+    .sk-pill {
+      border-radius: 999px;
+    }
+
+    .sync-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f8fafc;
+      border: 1px solid var(--ln);
+      color: var(--mu);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .sync-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    .sync-dot.pulsing {
+      background: var(--warn);
+      animation: pulse-op 1s infinite alternate;
+    }
+
+    @keyframes pulse-op {
+      from {
+        opacity: 0.35;
+      }
+
+      to {
+        opacity: 1;
+      }
     }
 
     /* Header */
@@ -631,6 +695,7 @@
       border-radius: 12px;
       border: 1px solid var(--ln);
       background: #fff;
+      will-change: transform;
     }
 
     table.master-tbl {
@@ -826,17 +891,6 @@
       margin-bottom: 8px;
     }
 
-    .dev-footer .badge-box {
-      background: #fff;
-      border: 1px solid var(--ln);
-      border-radius: 10px;
-      padding: 4px 8px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-    }
-
     .dev-footer .dev-credit {
       display: inline-block;
       background: var(--navy);
@@ -847,9 +901,21 @@
       padding: 4px 12px;
       border-radius: 999px;
       text-transform: uppercase;
+      text-decoration: none;
+      border: 1px solid rgba(197, 160, 89, 0.45);
     }
 
-    /* Toast & Custom Modal (No alert/confirm/prompt) */
+    .dev-footer .dev-credit:hover {
+      opacity: 0.92;
+    }
+
+    .dev-link-plain {
+      color: var(--navy);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* Toast & Custom Modal */
     #toast {
       position: fixed;
       left: 50%;
@@ -865,7 +931,7 @@
       z-index: 300;
       opacity: 0;
       pointer-events: none;
-      transition: all 0.25s ease;
+      transition: all 0.22s ease;
       max-width: 90%;
       text-align: center;
       box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
@@ -927,22 +993,22 @@
 
   <div id="loader"></div>
   <div id="net-banner">
-    <span id="net-banner-text">⚡ Offline / Low Network Mode — Viewing cached data. Check network before saving!</span>
+    <span id="net-banner-text">Offline / Low Network Mode — Viewing cached data. Check network before saving!</span>
   </div>
 
   <div id="app" class="app-shell"></div>
   <div id="toast"></div>
 
-  <!-- Custom Non-Blocking Modal Dialog (replaces alert/confirm/prompt) -->
+  <!-- Custom Non-Blocking Modal Dialog -->
   <div id="modal-backdrop">
     <div class="modal-card" id="modal-content"></div>
   </div>
 
   <script>
     /* ============================================================================
-     * BIST BHOPAL & BGI - AIML DEPARTMENT ATTENDANCE SYSTEM (v4 Frontend)
-     * HOD: Dr. Rashmi Singh  |  Developed by Devlinkhub Team
-     * 100% Live Google Apps Script Integration (Zero Mock Data)
+     * BIST BHOPAL & BGI - AIML DEPARTMENT ATTENDANCE SYSTEM (v4.5 TURBO FRONTEND)
+     * HOD: Dr. Rashmi Singh  |  Developed by Devlinkhub Team (https://devlinkhub.in)
+     * Optimizations: Skeleton Shimmer UI + Persistent Student Cache + Deduplication
      * ============================================================================ */
 
     const $ = s => document.querySelector(s);
@@ -950,6 +1016,14 @@
     const HOD_NAME = 'Dr. Rashmi Singh';
     const COLLEGE_NAME = 'Bansal Institute of Science & Technology (BIST), Bhopal';
     const GROUP_NAME = 'Bansal Group of Institutes (BGI)';
+    const DEVLINK_URL = 'https://devlinkhub.in';
+
+    // Your Live Google Apps Script Execution URL
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbz3IPkhPUrMdKgrfA46cEmJ2SwUW1pghIxTDPOp6OZ95PkCsxuKm-_nSBwHFdIplp-xvA/exec";
+
+    // Cache TTL Rules (in milliseconds)
+    const STUDENT_TTL_MS = 5 * 60 * 1000; // 5 minutes persistent student cache (no repeated fetching!)
+    const STAFF_TTL_MS = 45 * 1000;       // 45 seconds fast in-memory cache for staff
 
     const S = {
       token: null,
@@ -964,10 +1038,14 @@
       absDate: ''
     };
 
-    let M = null; // Active attendance sheet state
+    let M = null;
     let LOGIN = { mode: 'student', branch: '', sem: '', classId: '' };
     let PUBLIC_CLASSES = [];
     let busyCount = 0;
+
+    // Fast In-Memory Cache & Pending Request Deduplicator
+    const MEM_CACHE = {};
+    const IN_FLIGHT = {};
 
     /* ---------------- High-Precision Inline SVG Crests + Image Logos ---------------- */
     const SVG_BIST_FALLBACK = `<svg viewBox="0 0 120 120" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
@@ -986,7 +1064,7 @@
   <path d="M10 10 L44 3 L78 10 L78 48 C78 72 44 90 44 90 C44 90 10 72 10 48 Z" fill="#ffffff" stroke="#0a192f" stroke-width="4.5"/>
   <path d="M15 14 L44 8 L73 14 L73 47 C73 67 44 83 44 83 C44 83 15 67 15 47 Z" fill="none" stroke="#c5a059" stroke-width="2.2"/>
   <text x="44" y="50" text-anchor="middle" fill="#0a192f" font-size="24" font-weight="900" stroke="#c5a059" stroke-width="0.8" font-family="sans-serif">BGI</text>
-  <text x="44" y="68" text-anchor="middle" fill="#c5a059" font-size="10" font-weight="900">★ ★ ★</text>
+  <text x="44" y="68" text-anchor="middle" fill="#c5a059" font-size="8" font-weight="900">BGI GROUP</text>
   <text x="86" y="34" fill="#0a192f" font-size="21" font-weight="900" font-family="serif" letter-spacing="0.5">BANSAL</text>
   <text x="86" y="49" fill="#0a192f" font-size="8.2" font-weight="800" font-family="sans-serif" letter-spacing="0.4">GROUP OF INSTITUTES</text>
   <rect x="86" y="56" width="84" height="15" rx="2" fill="#c5a059"/>
@@ -1015,17 +1093,95 @@
       <div style="font-size:11.5px;font-weight:900;color:var(--navy);margin-bottom:2px">BANSAL INSTITUTE OF SCIENCE & TECHNOLOGY, BHOPAL</div>
       <div style="font-size:10.5px;font-weight:800;color:var(--gold-dark);margin-bottom:2px">BANSAL GROUP OF INSTITUTES (BGI)</div>
       <div style="font-size:10.5px;font-weight:700;color:var(--mu);margin-bottom:8px">Department of AIML (Artificial Intelligence & Machine Learning) • HOD: ${HOD_NAME}</div>
-      <span class="dev-credit">Developed by Devlinkhub Team</span>
+      <a href="${DEVLINK_URL}" target="_blank" rel="noopener noreferrer" class="dev-credit">Developed by Devlinkhub Team</a>
     </footer>
   `;
     }
 
-    /* ---------------- Utilities & Offline Caching ---------------- */
+    /* ---------------- SKELETON SHIMMER TEMPLATES ---------------- */
+    function skStudent() {
+      return `
+        <div class="card" style="text-align:center;padding:20px 15px">
+          <div class="sk sk-circle" style="width:130px;height:130px;margin:0 auto 14px"></div>
+          <div class="sk" style="height:18px;width:55%;margin:0 auto 8px"></div>
+          <div class="sk" style="height:13px;width:40%;margin:0 auto 12px"></div>
+          <div class="sk sk-pill" style="height:26px;width:65%;margin:0 auto"></div>
+        </div>
+        <div class="sk" style="height:14px;width:48%;margin:14px 4px 10px"></div>
+        ${[1, 2, 3].map(() => `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <div style="width:65%">
+                <div class="sk" style="height:15px;width:85%;margin-bottom:6px"></div>
+                <div class="sk" style="height:11px;width:50%"></div>
+              </div>
+              <div class="sk" style="height:24px;width:50px"></div>
+            </div>
+            <div class="sk sk-pill" style="height:8px;width:100%;margin-bottom:8px"></div>
+            <div class="sk" style="height:11px;width:40%"></div>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    function skReport() {
+      return `
+        <div class="row3" style="margin-bottom:12px">
+          ${[1, 2, 3].map(() => `
+            <div class="card" style="margin:0;padding:14px 10px;text-align:center">
+              <div class="sk" style="height:24px;width:50%;margin:0 auto 6px"></div>
+              <div class="sk" style="height:10px;width:70%;margin:0 auto"></div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="card">
+          <div class="row2" style="margin-bottom:12px">
+            <div class="sk" style="height:34px;border-radius:9px"></div>
+            <div class="sk" style="height:34px;border-radius:9px"></div>
+          </div>
+          <div class="sk" style="height:38px;width:100%;border-radius:11px;margin-bottom:12px"></div>
+          ${[1, 2, 3, 4, 5, 6].map(() => `
+            <div class="sk" style="height:32px;width:100%;margin-bottom:6px;border-radius:6px"></div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function skList(rows = 5) {
+      return `
+        <div class="card">
+          <div class="sk" style="height:18px;width:52%;margin-bottom:8px"></div>
+          <div class="sk" style="height:12px;width:75%;margin-bottom:16px"></div>
+          ${Array.from({ length: rows }).map(() => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--ln)">
+              <div style="width:68%">
+                <div class="sk" style="height:14px;width:80%;margin-bottom:6px"></div>
+                <div class="sk" style="height:11px;width:45%"></div>
+              </div>
+              <div class="sk" style="height:30px;width:68px;border-radius:9px"></div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    /* ---------------- Utilities & Persistent LocalStorage Cache ---------------- */
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const today = () => {
       const d = new Date();
       return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     };
+
+    function timeAgo(ts) {
+      if (!ts) return 'Just now';
+      const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+      if (sec < 30) return 'Just now';
+      if (sec < 60) return sec + 's ago';
+      const min = Math.floor(sec / 60);
+      if (min < 60) return min + 'm ago';
+      const hr = Math.floor(min / 60);
+      return hr + 'h ago';
+    }
 
     function isGasEnv() {
       return (typeof google !== 'undefined' && google.script && google.script.run) || Boolean(typeof GAS_URL !== 'undefined' && GAS_URL && !GAS_URL.includes('YOUR_SCRIPT_ID_HERE'));
@@ -1037,10 +1193,10 @@
       if (!b || !txt) return;
       if (!navigator.onLine) {
         b.className = 'offline';
-        txt.textContent = '⚡ Offline / Low Network Mode — Viewing cached data. Reconnect before saving!';
+        txt.textContent = 'Offline / Low Network Mode — Viewing saved data from phone memory!';
       } else if (!isGasEnv()) {
         b.className = 'gas-ready';
-        txt.textContent = 'ℹ️ Ready for Google Apps Script deployment (Index.html) — Live GAS backend connects automatically on deploy.';
+        txt.textContent = 'Ready for Google Apps Script connection.';
       } else {
         b.className = '';
       }
@@ -1049,14 +1205,39 @@
     window.addEventListener('offline', updateNetStatus);
 
     function cacheSet(key, val) {
-      try { localStorage.setItem('bist_v4_' + key, JSON.stringify({ ts: Date.now(), data: val })); } catch (e) { }
+      const entry = { ts: Date.now(), data: val };
+      MEM_CACHE[key] = entry;
+      try { localStorage.setItem('bist_v4_' + key, JSON.stringify(entry)); } catch (e) { }
     }
-    function cacheGet(key) {
+
+    function cacheGetEntry(key) {
+      if (MEM_CACHE[key]) return MEM_CACHE[key];
       try {
         const raw = localStorage.getItem('bist_v4_' + key);
-        return raw ? JSON.parse(raw).data : null;
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        MEM_CACHE[key] = parsed;
+        return parsed;
       } catch (e) { return null; }
     }
+
+    function cacheGet(key) {
+      const entry = cacheGetEntry(key);
+      return entry ? entry.data : null;
+    }
+
+    function isCacheFresh(key, ttlMs) {
+      const entry = cacheGetEntry(key);
+      if (!entry || !entry.ts) return false;
+      return (Date.now() - entry.ts) < ttlMs;
+    }
+
+    function clearWriteCaches() {
+      Object.keys(MEM_CACHE).forEach(k => {
+        if (!k.startsWith('public_classes')) delete MEM_CACHE[k];
+      });
+    }
+
     function fnCacheKey(fn, args) {
       try { return 'rpc_' + fn + '_' + JSON.stringify(args || []); } catch (e) { return 'rpc_' + fn; }
     }
@@ -1066,22 +1247,22 @@
       t.textContent = msg;
       t.classList.add('show');
       clearTimeout(toast.timer);
-      toast.timer = setTimeout(() => t.classList.remove('show'), 3200);
+      toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
     }
 
     function busy(delta) {
       busyCount += delta;
       const bar = $('#loader');
       if (busyCount > 0) {
-        bar.style.width = '82%';
+        bar.style.width = '84%';
       } else {
         busyCount = 0;
         bar.style.width = '100%';
-        setTimeout(() => { if (busyCount === 0) bar.style.width = '0%'; }, 280);
+        setTimeout(() => { if (busyCount === 0) bar.style.width = '0%'; }, 240);
       }
     }
 
-    /* Custom Non-Blocking Modals (Zero alert/confirm/prompt) */
+    /* Custom Non-Blocking Modals */
     function closeModal() {
       $('#modal-backdrop').classList.remove('open');
     }
@@ -1100,12 +1281,12 @@
       $('#modal-ok-btn').onclick = () => { closeModal(); onConfirm(); };
     }
 
-    function showPromptModal(title, message, placeholder, onSubmit) {
+    function showPromptModal(title, message, placeholder, defaultVal, onSubmit) {
       const m = $('#modal-content');
       m.innerHTML = `
     <h4>${esc(title)}</h4>
     <p>${esc(message)}</p>
-    <input id="modal-inp" class="inp" placeholder="${esc(placeholder || '')}" style="margin-bottom:14px">
+    <input id="modal-inp" class="inp" value="${esc(defaultVal ?? '')}" placeholder="${esc(placeholder || '')}" style="margin-bottom:14px">
     <div class="row2">
       <button class="btn sec" onclick="closeModal()">Cancel</button>
       <button class="btn gold" id="modal-sub-btn">Save</button>
@@ -1113,11 +1294,11 @@
   `;
       $('#modal-backdrop').classList.add('open');
       const inp = $('#modal-inp');
-      setTimeout(() => inp.focus(), 50);
+      setTimeout(() => { inp.focus(); inp.select(); }, 50);
       inp.onkeydown = e => { if (e.key === 'Enter') $('#modal-sub-btn').click(); };
       $('#modal-sub-btn').onclick = () => {
         const val = inp.value.trim();
-        if (!val) return toast('Please enter a value');
+        if (val === '') return toast('Please enter a value');
         closeModal();
         onSubmit(val);
       };
@@ -1132,97 +1313,125 @@
       ta.select();
       try {
         document.execCommand('copy');
-        toast(successMsg || 'Copied to clipboard ✔');
+        toast(successMsg || 'Copied to clipboard');
       } catch (e) {
         toast('Could not copy text');
       }
       document.body.removeChild(ta);
     }
 
-    /* ---------------- Live Google Apps Script Bridge (API Mode) ---------------- */
+    /* ---------------- TURBO API ENGINE (Deduplicated + Cached) ---------------- */
     const CACHEABLE = [
       'publicClasses', 'listClasses', 'listTeachers', 'listSubjects',
       'listStudents', 'getAttendanceSheet', 'getAbsentees', 'getSummary',
       'getSettings', 'getMyAttendance'
     ];
-    const READ_FNS = new Set(CACHEABLE);
     const ckey = (fn, a) => fnCacheKey(fn, fn === 'publicClasses' ? [] : (a || []).slice(1));
-    const setCache = (k, v) => cacheSet(k, v);
-    const getCache = k => cacheGet(k);
 
-    // Paste your copied Google Script /exec URL here:
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbz3IPkhPUrMdKgrfA46cEmJ2SwUW1pghIxTDPOp6OZ95PkCsxuKm-_nSBwHFdIplp-xvA/exec";
+    async function rawPost(fn, args) {
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ fn, args })
+      });
+      const json = await res.json();
+      const isOk = json.ok !== undefined ? json.ok : (json.status === 'ok');
+      const data = json.data !== undefined ? json.data : (json.result !== undefined ? json.result : json);
+      if (!isOk) throw new Error(json.error || json.message || 'Server error');
+      return data;
+    }
+
     async function run(fn, ...a) {
-      busy(1);
-      try {
-        const res = await fetch(GAS_URL, {
-          method: "POST",
-          // Using text/plain avoids CORS preflight blocks from Google
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ fn, args: a })
-        });
-        const json = await res.json();
-        busy(-1);
+      const isRead = CACHEABLE.includes(fn);
+      const key = ckey(fn, a);
 
-        const isOk = json.ok !== undefined ? json.ok : (json.status === 'ok');
-        const data = json.data !== undefined ? json.data : (json.result !== undefined ? json.result : json);
-        if (!isOk) throw new Error(json.error || json.message || 'Server error');
-
-        // Save to local cache for offline/low-network fallback
-        if (CACHEABLE.includes(fn)) setCache(ckey(fn, a), data);
-        return data;
-
-      } catch (e) {
-        busy(-1);
-        const cached = getCache(ckey(fn, a));
-        if (cached !== null && CACHEABLE.includes(fn)) {
-          toast('📡 Offline Mode: Showing saved campus data');
-          return cached;
-        }
-        const msg = e.message || String(e);
-        if (/Session expired/.test(msg)) {
-          toast('Session expired');
-          setTimeout(() => logout(true), 800);
-        } else {
-          toast('⚠ ' + msg.replace(/^Error: /, ''));
-        }
-        return undefined;
+      // Deduplicate identical in-flight read requests
+      if (isRead && IN_FLIGHT[key]) {
+        return IN_FLIGHT[key];
       }
+
+      const task = (async () => {
+        busy(1);
+        try {
+          const data = await rawPost(fn, a);
+          busy(-1);
+          if (isRead) {
+            cacheSet(key, data);
+          } else {
+            // Any write operation invalidates staff read caches so UI stays fresh
+            clearWriteCaches();
+          }
+          return data;
+        } catch (e) {
+          busy(-1);
+          const cached = cacheGet(key);
+          if (cached !== null && isRead) {
+            toast('Low Network: Showing saved campus data');
+            return cached;
+          }
+          const msg = e.message || String(e);
+          if (/Session expired/i.test(msg)) {
+            toast('Session expired');
+            setTimeout(() => logout(true), 800);
+          } else {
+            toast('Error: ' + msg.replace(/^Error:\s*/i, ''));
+          }
+          return undefined;
+        } finally {
+          delete IN_FLIGHT[key];
+        }
+      })();
+
+      if (isRead) IN_FLIGHT[key] = task;
+      return task;
     }
 
     async function call(fn, ...args) {
-      try {
-        return await run(fn, S.token, ...args);
-      } catch (e) {
-        const msg = (e && e.message) ? e.message : String(e);
-        if (/Session expired/i.test(msg)) {
-          toast('Session expired, please login again');
-          setTimeout(() => logout(true), 700);
-        } else {
-          toast('⚠ ' + msg.replace(/^Error:\s*/i, ''));
-        }
-        return undefined;
-      }
+      return await run(fn, S.token, ...args);
     }
 
-    const saveToken = tk => {
-      try { tk ? localStorage.setItem('att_tk_v4', tk) : localStorage.removeItem('att_tk_v4'); } catch (e) { }
+    const saveSession = (tk, userObj) => {
+      try {
+        if (tk && userObj) {
+          localStorage.setItem('att_tk_v4', tk);
+          localStorage.setItem('att_usr_v4', JSON.stringify(userObj));
+        } else {
+          localStorage.removeItem('att_tk_v4');
+          localStorage.removeItem('att_usr_v4');
+        }
+      } catch (e) { }
     };
 
     /* ============================================================================
-     * 1. INITIALIZATION & LOGIN SCREEN
+     * 1. INITIALIZATION & INSTANT SESSION RESUME
      * ============================================================================ */
     async function init() {
       updateNetStatus();
       S.absDate = today();
-      let tk = null;
-      try { tk = localStorage.getItem('att_tk_v4'); } catch (e) { }
+
+      let tk = null, savedUser = null;
+      try {
+        tk = localStorage.getItem('att_tk_v4');
+        const rawU = localStorage.getItem('att_usr_v4');
+        if (rawU) savedUser = JSON.parse(rawU);
+      } catch (e) { }
+
+      // Instant boot from localStorage session without waiting for network roundtrip!
+      if (tk && savedUser) {
+        await start({ token: tk, user: savedUser });
+        // Verify token silently in background
+        run('resume', tk).then(r => {
+          if (!r || !r.user) logout(true);
+        }).catch(() => { });
+        return;
+      }
+
       if (tk) {
         try {
           const r = await run('resume', tk);
           if (r && r.user) { await start(r); return; }
         } catch (e) {
-          saveToken(null);
+          saveSession(null, null);
         }
       }
       vLogin();
@@ -1230,10 +1439,12 @@
 
     async function vLogin() {
       const isStu = LOGIN.mode === 'student';
+      let lastEnr = '';
+      try { lastEnr = localStorage.getItem('bist_last_enr') || ''; } catch (e) { }
+
       $('#app').innerHTML = `
     <div style="background:linear-gradient(150deg, var(--navy) 0%, var(--navy-2) 60%, var(--navy-3) 100%);min-height:100vh;padding:22px 16px;display:flex;flex-direction:column;justify-content:space-between;color:#fff">
       <div>
-        <!-- Institutional Header -->
         <div style="display:flex;justify-content:center;margin-top:8px;margin-bottom:14px">
           ${renderLogos('lg')}
         </div>
@@ -1252,11 +1463,10 @@
           </p>
         </div>
 
-        <!-- Login Card -->
         <div class="card" style="color:var(--tx);padding:18px;border-radius:20px;border:2px solid var(--gold)">
           <div class="seg">
-            <button class="${isStu ? 'on' : ''}" onclick="LOGIN.mode='student';vLogin()">🎓 Student Portal</button>
-            <button class="${!isStu ? 'on' : ''}" onclick="LOGIN.mode='staff';vLogin()">👩‍🏫 HOD / Faculty</button>
+            <button class="${isStu ? 'on' : ''}" onclick="LOGIN.mode='student';vLogin()">Student Portal</button>
+            <button class="${!isStu ? 'on' : ''}" onclick="LOGIN.mode='staff';vLogin()">HOD / Faculty</button>
           </div>
 
           ${isStu ? `
@@ -1269,12 +1479,12 @@
               <div id="stu-quick-chips" class="chips" style="margin-top:8px"></div>
 
               <label class="lbl">Enrollment Number</label>
-              <input id="l-enr" class="inp" placeholder="e.g. 0112AL231001" autocapitalize="characters"
+              <input id="l-enr" class="inp" value="${esc(lastEnr)}" placeholder="e.g. 0112AL231001" autocapitalize="characters"
                      style="text-transform:uppercase;font-family:monospace"
                      onkeydown="if(event.key==='Enter')doStudent()">
 
               <button class="btn gold" style="margin-top:14px" onclick="doStudent()">
-                View My Attendance →
+                View My Attendance
               </button>
             </div>
           ` : `
@@ -1287,19 +1497,18 @@
                      onkeydown="if(event.key==='Enter')doStaff()">
 
               <button class="btn" style="margin-top:14px" onclick="doStaff()">
-                Secure Staff Login →
+                Secure Staff Login
               </button>
             </div>
           `}
         </div>
       </div>
 
-      <!-- Login Footer -->
       <div style="text-align:center;margin-top:20px">
         <div style="font-size:11px;color:#cbd5e1;margin-bottom:6px">Bhopal • Indore • Mandideep</div>
-        <span style="display:inline-block;background:rgba(255,255,255,0.12);border:1px solid var(--gold);color:var(--gold);font-size:11px;font-weight:800;padding:5px 14px;border-radius:999px;letter-spacing:0.06em;text-transform:uppercase">
+        <a href="${DEVLINK_URL}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:rgba(255,255,255,0.12);border:1px solid var(--gold);color:var(--gold);font-size:11px;font-weight:800;padding:5px 14px;border-radius:999px;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none">
           Developed by Devlinkhub Team
-        </span>
+        </a>
       </div>
     </div>
   `;
@@ -1309,23 +1518,19 @@
       }
     }
 
-    async function loadPublicClassesForLogin() {
+    function renderPublicClassesDropdown(list) {
       const sel = $('#l-class');
       const chips = $('#stu-quick-chips');
       if (!sel) return;
-      let list = cacheGet('public_classes') || [];
-      try {
-        const fresh = await run('publicClasses');
-        if (Array.isArray(fresh)) {
-          list = fresh;
-          cacheSet('public_classes', list);
-        }
-      } catch (e) { }
-
       PUBLIC_CLASSES = list;
       if (!list.length) {
         sel.innerHTML = `<option value="">No classes created yet (Contact HOD)</option>`;
         return;
+      }
+      let savedCid = '';
+      try { savedCid = localStorage.getItem('bist_last_cid') || ''; } catch (e) { }
+      if (!LOGIN.classId && savedCid && list.some(c => c.id === savedCid)) {
+        LOGIN.classId = savedCid;
       }
       if (!LOGIN.classId || !list.some(c => c.id === LOGIN.classId)) {
         LOGIN.classId = list[0].id;
@@ -1341,29 +1546,41 @@
       }
     }
 
+    async function loadPublicClassesForLogin() {
+      const cached = cacheGet('public_classes');
+      if (Array.isArray(cached) && cached.length) {
+        renderPublicClassesDropdown(cached);
+        if (isCacheFresh('public_classes', STUDENT_TTL_MS)) return;
+      }
+      try {
+        const fresh = await run('publicClasses');
+        if (Array.isArray(fresh)) {
+          cacheSet('public_classes', fresh);
+          renderPublicClassesDropdown(fresh);
+        }
+      } catch (e) { }
+    }
+
     async function doStudent() {
       const cid = $('#l-class')?.value;
-      const enr = $('#l-enr')?.value.trim();
+      const enr = $('#l-enr')?.value.trim().toUpperCase();
       if (!cid) return toast('Please select your Class');
       if (!enr) return toast('Please enter your Enrollment No');
       try {
-        const res = await run('studentLogin', cid, enr);
-        if (res) await start(res);
-      } catch (e) {
-        toast('⚠ ' + (e.message || String(e)).replace(/^Error:\s*/i, ''));
-      }
+        localStorage.setItem('bist_last_enr', enr);
+        localStorage.setItem('bist_last_cid', cid);
+      } catch (e) { }
+
+      const res = await run('studentLogin', cid, enr);
+      if (res) await start(res);
     }
 
     async function doStaff() {
       const u = $('#l-user')?.value.trim();
       const p = $('#l-pass')?.value;
       if (!u || !p) return toast('Enter both username and password');
-      try {
-        const res = await run('login', u, p);
-        if (res) await start(res);
-      } catch (e) {
-        toast('⚠ ' + (e.message || String(e)).replace(/^Error:\s*/i, ''));
-      }
+      const res = await run('login', u, p);
+      if (res) await start(res);
     }
 
     async function logout(silent) {
@@ -1371,20 +1588,20 @@
       const wasStudent = S.user && S.user.role === 'STUDENT';
       S.token = null;
       S.user = null;
-      saveToken(null);
+      saveSession(null, null);
       LOGIN.mode = wasStudent ? 'student' : 'staff';
       vLogin();
       if (!silent) toast('Logged out safely');
     }
 
     /* ============================================================================
-     * 2. APP SHELL, NAVIGATION & CLASS SELECTOR
+     * 2. APP SHELL, NAVIGATION & BATCHED STARTUP
      * ============================================================================ */
     async function start(r) {
       if (!r || !r.user) return;
       S.token = r.token;
       S.user = r.user;
-      saveToken(r.token);
+      saveSession(r.token, r.user);
 
       const role = S.user.role;
       if (role === 'STUDENT') {
@@ -1392,21 +1609,61 @@
         return;
       }
 
-      const [classes, teachers, settings] = await Promise.all([
-        call('listClasses'),
-        role === 'HOD' ? call('listTeachers') : Promise.resolve([]),
-        role === 'HOD' ? call('getSettings') : Promise.resolve({ min: 75 })
-      ]);
+      // Render shell immediately with cached classes if available
+      const cachedClasses = cacheGet('staff_classes_' + S.user.username);
+      const cachedTeachers = cacheGet('staff_teachers');
+      if (cachedClasses) {
+        S.classes = cachedClasses;
+        S.teachers = cachedTeachers || [];
+        S.classId = S.classId || S.classes[0]?.id || '';
+        tab(role === 'HOD' ? 'report' : 'mark');
+      } else {
+        renderShell();
+        $('#view').innerHTML = role === 'HOD' ? skReport() : skList(4);
+      }
 
-      S.classes = classes || [];
-      S.teachers = teachers || [];
-      if (settings && settings.min) S.minPct = settings.min;
+      // Single Batch Request if supported by v4.5 Turbo backend, with fallback to parallel calls
+      try {
+        if (role === 'HOD') {
+          const bRes = await rawPost('batchCall', [[
+            { fn: 'listClasses', args: [S.token] },
+            { fn: 'listTeachers', args: [S.token] },
+            { fn: 'getSettings', args: [S.token] }
+          ]]);
+          if (Array.isArray(bRes) && bRes[0]?.ok) {
+            S.classes = bRes[0].data || [];
+            S.teachers = bRes[1]?.data || [];
+            if (bRes[2]?.data?.min) S.minPct = bRes[2].data.min;
+          } else {
+            throw new Error('Fallback to parallel');
+          }
+        } else {
+          S.classes = (await call('listClasses')) || [];
+        }
+      } catch (e) {
+        const [classes, teachers, settings] = await Promise.all([
+          call('listClasses'),
+          role === 'HOD' ? call('listTeachers') : Promise.resolve([]),
+          role === 'HOD' ? call('getSettings') : Promise.resolve({ min: 75 })
+        ]);
+        S.classes = classes || [];
+        S.teachers = teachers || [];
+        if (settings && settings.min) S.minPct = settings.min;
+      }
+
+      cacheSet('staff_classes_' + S.user.username, S.classes);
+      if (role === 'HOD') cacheSet('staff_teachers', S.teachers);
 
       if (!S.classId || !S.classes.some(c => c.id === S.classId)) {
         S.classId = S.classes[0]?.id || '';
       }
 
-      tab(role === 'HOD' ? 'report' : 'mark');
+      if (!cachedClasses) {
+        tab(role === 'HOD' ? 'report' : 'mark');
+      } else {
+        const needsClassBar = ['report', 'students', 'subjects', 'absent'].includes(S.tab) || (S.tab === 'mark' && S.user.role === 'HOD');
+        renderClassBar(needsClassBar);
+      }
     }
 
     function getNavTabs() {
@@ -1489,7 +1746,7 @@
       <select onchange="S.classId=this.value;tab(S.tab)">
         ${S.classes.map(c => `<option value="${esc(c.id)}" ${c.id === S.classId ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
       </select>
-      ${cur?.url ? `<a class="btn sm gold" style="width:auto;padding:9px 11px" target="_blank" href="${esc(cur.url)}" title="Open Google Sheet">Sheet ↗</a>` : ''}
+      ${cur?.url ? `<a class="btn sm gold" style="width:auto;padding:9px 11px" target="_blank" href="${esc(cur.url)}" title="Open Google Sheet">Sheet</a>` : ''}
     </div>
   `;
     }
@@ -1497,7 +1754,6 @@
     function noClassCard() {
       return `
     <div class="card empty">
-      <div style="font-size:32px;margin-bottom:6px">🏫</div>
       ${S.user.role === 'HOD'
           ? `No Class created yet.<br><button class="btn gold sm" style="margin-top:10px" onclick="tab('setup')">+ Create First Class in Setup</button>`
           : `No classes or subjects have been assigned to you yet. Please contact <b>${HOD_NAME} (HOD AIML)</b>.`}
@@ -1530,26 +1786,31 @@
     }
 
     /* ============================================================================
-     * 3. HOD: MASTER REPORT (`getSummary`)
+     * 3. HOD: MASTER REPORT (`getSummary` + `forceRecompile` for Manual Sheet Edits)
      * ============================================================================ */
-    async function vReport() {
+    async function vReport(forceSync = false) {
       const v = $('#view');
       if (!S.classId) { v.innerHTML = noClassCard(); return; }
 
-      const cached = cacheGet('summary_' + S.classId);
-      if (cached) {
-        drawReportView(cached, true);
+      const cacheKey = 'summary_' + S.classId;
+      const cachedEntry = cacheGetEntry(cacheKey);
+
+      if (!forceSync && cachedEntry) {
+        drawReportView(cachedEntry.data, !isCacheFresh(cacheKey, STAFF_TTL_MS), cachedEntry.ts);
+        if (isCacheFresh(cacheKey, STAFF_TTL_MS)) return;
       } else {
-        v.innerHTML = `<div class="card empty">Compiling Master Attendance Sheet…</div>`;
+        v.innerHTML = skReport();
       }
 
-      const res = await call('getSummary', S.classId);
+      const fnName = forceSync ? 'forceRecompile' : 'getSummary';
+      const res = await call(fnName, S.classId);
       if (!res) return;
-      cacheSet('summary_' + S.classId, res);
-      drawReportView(res, false);
+      cacheSet(cacheKey, res);
+      if (forceSync) toast('Master sheet and manual counts synced');
+      if (S.tab === 'report') drawReportView(res, false, Date.now());
     }
 
-    function drawReportView(res, isCached) {
+    function drawReportView(res, isSyncing, ts) {
       const v = $('#view');
       const table = res.table || [];
       const min = res.min || S.minPct || 75;
@@ -1570,7 +1831,16 @@
       const shownRows = S.onlyDefaulters ? stuRows.filter(isLow) : stuRows;
 
       v.innerHTML = `
-    ${isCached ? `<div style="font-size:11px;color:var(--mu);text-align:center;margin-bottom:8px">⚡ Showing instant cached report • Syncing live…</div>` : ''}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span class="sync-pill">
+        <span class="sync-dot ${isSyncing ? 'pulsing' : ''}"></span>
+        ${isSyncing ? 'Syncing live…' : 'Synced ' + timeAgo(ts)}
+      </span>
+      <button class="btn sm outline" onclick="vReport(true)" title="Click after editing Previous Count in Excel/Sheet">
+        Sync Sheet Edits
+      </button>
+    </div>
+
     <div class="row3" style="margin-bottom:12px">
       <div class="card" style="text-align:center;margin:0;padding:12px 8px">
         <div style="font-size:22px;font-weight:900;color:var(--navy)">${stuRows.length}</div>
@@ -1582,19 +1852,19 @@
       </div>
       <div class="card" style="text-align:center;margin:0;padding:12px 8px">
         <div style="font-size:22px;font-weight:900;color:var(--ok)">${stuRows.length - defaultersCount}</div>
-        <div style="font-size:10.5px;font-weight:800;color:var(--ok);text-transform:uppercase">Safe (≥${min}%)</div>
+        <div style="font-size:10.5px;font-weight:800;color:var(--ok);text-transform:uppercase">Safe (${min}%+)</div>
       </div>
     </div>
 
     <div class="card">
       <div class="row2" style="margin-bottom:10px">
-        <button class="btn sm ${S.onlyDefaulters ? 'red' : 'sec'}" onclick="S.onlyDefaulters=!S.onlyDefaulters;vReport()">
-          ${S.onlyDefaulters ? `⚠ Showing < ${min}% Only` : `Filter Defaulters (<${min}%)`}
+        <button class="btn sm ${S.onlyDefaulters ? 'red' : 'sec'}" onclick="S.onlyDefaulters=!S.onlyDefaulters;drawReportView(cacheGet('summary_'+S.classId),false,Date.now())">
+          ${S.onlyDefaulters ? `Showing Below ${min}% Only` : `Filter Defaulters (Below ${min}%)`}
         </button>
-        <a class="btn sm gold" target="_blank" href="${esc(res.url || '#')}">Open Master Sheet ↗</a>
+        <a class="btn sm gold" target="_blank" href="${esc(res.url || '#')}">Open Master Sheet</a>
       </div>
 
-      <input id="rep-q" class="inp" placeholder="🔍 Search student name or enrollment no…" oninput="filterMasterTable()" style="margin-bottom:10px">
+      <input id="rep-q" class="inp" placeholder="Search student name or enrollment no…" oninput="filterMasterTable()" style="margin-bottom:10px">
 
       ${shownRows.length ? `
         <div class="table-wrap">
@@ -1642,9 +1912,26 @@
       const isHod = S.user.role === 'HOD';
       if (isHod && !S.classId) { v.innerHTML = noClassCard(); return; }
 
-      v.innerHTML = `<div class="card empty">Loading subjects…</div>`;
-      S.subjects = await call('listSubjects', isHod ? S.classId : '') || [];
+      const subKey = 'subs_' + (isHod ? S.classId : S.user.username);
+      const cachedSubs = cacheGet(subKey);
+      if (cachedSubs) {
+        S.subjects = cachedSubs;
+        drawMarkSubjectsList();
+        if (isCacheFresh(subKey, STAFF_TTL_MS)) return;
+      } else {
+        v.innerHTML = skList(4);
+      }
 
+      const fresh = await call('listSubjects', isHod ? S.classId : '');
+      if (!fresh) return;
+      S.subjects = fresh;
+      cacheSet(subKey, fresh);
+      if (S.tab === 'mark' && !M) drawMarkSubjectsList();
+    }
+
+    function drawMarkSubjectsList() {
+      const v = $('#view');
+      const isHod = S.user.role === 'HOD';
       if (!S.subjects.length) {
         v.innerHTML = `
       <div class="card empty">
@@ -1663,9 +1950,9 @@
       v.innerHTML = `
     ${regular.length ? `
       <div class="card">
-        <h3>📚 Regular Class Subjects</h3>
+        <h3>Regular Class Subjects</h3>
         <p class="hint">Tap a subject to mark or edit daily lecture attendance (P / A)</p>
-        ${regular.map((s) => {
+        ${regular.map(s => {
         const idx = S.subjects.indexOf(s);
         return `
             <div class="list-item" style="cursor:pointer" onclick="openSheet(${idx})">
@@ -1676,7 +1963,7 @@
                   ${s.teacher ? `<span class="tag" style="background:#f1f5f9;color:var(--mu);border-color:var(--ln)">@${esc(s.teacher)}</span>` : ''}
                 </div>
               </div>
-              <button class="btn sm">Mark →</button>
+              <button class="btn sm">Mark</button>
             </div>
           `;
       }).join('')}
@@ -1685,9 +1972,9 @@
 
     ${extras.length ? `
       <div class="card">
-        <h3>⭐ Extra Activities / Bonus Lectures (HOD)</h3>
-        <p class="hint">Award bonus lecture counts (e.g., Workshops, Hackathons, Seminars, Sports)</p>
-        ${extras.map((s) => {
+        <h3>Extra Activities / Bonus Lectures (HOD)</h3>
+        <p class="hint">Award bonus lecture counts (Workshops, Hackathons, Seminars, Sports)</p>
+        ${extras.map(s => {
         const idx = S.subjects.indexOf(s);
         return `
             <div class="list-item" style="cursor:pointer" onclick="openSheet(${idx})">
@@ -1698,7 +1985,7 @@
                   <span class="tag">${esc(s.cls)}</span>
                 </div>
               </div>
-              <button class="btn sm gold">Award →</button>
+              <button class="btn sm gold">Award</button>
             </div>
           `;
       }).join('')}
@@ -1727,7 +2014,7 @@
 
     async function loadSheet() {
       const v = $('#view');
-      v.innerHTML = `<div class="card empty">Loading attendance sheet…</div>`;
+      v.innerHTML = skList(7);
       const r = await call('getAttendanceSheet', M.s.classId, M.s.subject, M.date, M.sess);
       if (!r) return;
       M.extra = !!r.extra;
@@ -1749,8 +2036,8 @@
 
       v.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <button class="btn sec sm" onclick="tab('mark')">← Back to Subjects</button>
-      <span class="tag ${M.exists ? 'ok' : ''}">${M.exists ? '✔ Previously Saved (Editing)' : 'New Entry'}</span>
+      <button class="btn sec sm" onclick="tab('mark')">Back to Subjects</button>
+      <span class="tag ${M.exists ? 'ok' : ''}">${M.exists ? 'Previously Saved (Editing)' : 'New Entry'}</span>
     </div>
 
     <div class="card">
@@ -1787,12 +2074,12 @@
           <button class="btn sm ok" onclick="setAllExtra(M.lecs)">Set All Max (${M.lecs})</button>
           <button class="btn sm sec" onclick="setAllExtra(0)">Reset All to 0</button>
         ` : `
-          <button class="btn sm ok" onclick="setAllRegular('P')">✔ Mark All Present</button>
-          <button class="btn sm red" onclick="setAllRegular('A')">✕ Mark All Absent</button>
+          <button class="btn sm ok" onclick="setAllRegular('P')">Mark All Present</button>
+          <button class="btn sm red" onclick="setAllRegular('A')">Mark All Absent</button>
         `}
       </div>
 
-      <input class="inp" placeholder="🔍 Search student name or enrollment…" style="margin-top:10px"
+      <input class="inp" placeholder="Search student name or enrollment…" style="margin-top:10px"
              oninput="M.q=this.value.toLowerCase();drawSheetList()">
     </div>
 
@@ -1800,8 +2087,8 @@
 
     <div class="savebar">
       <div class="savebar-inner">
-        <button class="btn gold" onclick="saveAtt()">
-          💾 Save ${isExtra ? 'Activity Attendance' : 'Lecture Attendance'}
+        <button class="btn gold" id="save-att-btn" onclick="saveAtt()">
+          Save ${isExtra ? 'Activity Attendance' : 'Lecture Attendance'}
         </button>
       </div>
     </div>
@@ -1816,33 +2103,37 @@
       });
     }
 
-    function drawSheetList() {
+    function updateCountersDOM() {
       const counters = $('#att-summary-counters');
-      const listEl = $('#sheet-stu-list');
-      if (!listEl) return;
-
+      if (!counters) return;
       if (M.extra) {
         const withCredit = M.rows.filter(r => Number(r.s) > 0).length;
         counters.innerHTML = `
-      <div style="background:var(--okb);color:var(--ok);padding:8px;border-radius:10px;text-align:center;font-weight:800">
-        Awarded (>0): ${withCredit}
-      </div>
-      <div style="background:#f1f5f9;color:var(--mu);padding:8px;border-radius:10px;text-align:center;font-weight:800">
-        Zero (0): ${M.rows.length - withCredit}
-      </div>
-    `;
+          <div style="background:var(--okb);color:var(--ok);padding:8px;border-radius:10px;text-align:center;font-weight:800">
+            Awarded: ${withCredit}
+          </div>
+          <div style="background:#f1f5f9;color:var(--mu);padding:8px;border-radius:10px;text-align:center;font-weight:800">
+            Zero (0): ${M.rows.length - withCredit}
+          </div>
+        `;
       } else {
         const pCount = M.rows.filter(r => r.s === 'P').length;
         const aCount = M.rows.length - pCount;
         counters.innerHTML = `
-      <div style="background:var(--okb);color:var(--ok);padding:8px;border-radius:10px;text-align:center;font-weight:800">
-        Present: ${pCount}
-      </div>
-      <div style="background:var(--badb);color:var(--bad);padding:8px;border-radius:10px;text-align:center;font-weight:800">
-        Absent: ${aCount}
-      </div>
-    `;
+          <div style="background:var(--okb);color:var(--ok);padding:8px;border-radius:10px;text-align:center;font-weight:800">
+            Present: ${pCount}
+          </div>
+          <div style="background:var(--badb);color:var(--bad);padding:8px;border-radius:10px;text-align:center;font-weight:800">
+            Absent: ${aCount}
+          </div>
+        `;
       }
+    }
+
+    function drawSheetList() {
+      updateCountersDOM();
+      const listEl = $('#sheet-stu-list');
+      if (!listEl) return;
 
       if (!M.rows.length) {
         listEl.innerHTML = `<div class="empty">No students in this class yet. Add students first.</div>`;
@@ -1866,8 +2157,8 @@
           <small style="color:var(--mu);font-family:monospace">${esc(r.e)}</small>
         </div>
         <div class="stepper">
-          <button class="step-btn" onclick="stepExtra(${r.idx}, -1)">−</button>
-          <input type="number" min="0" max="${M.lecs}" class="step-val" value="${r.s}"
+          <button class="step-btn" onclick="stepExtra(${r.idx}, -1)">-</button>
+          <input id="step-inp-${r.idx}" type="number" min="0" max="${M.lecs}" class="step-val" value="${r.s}"
                  onchange="setExtraRow(${r.idx}, this.value)">
           <button class="step-btn" onclick="stepExtra(${r.idx}, 1)">+</button>
           <button class="step-btn" style="width:auto;padding:0 7px;font-size:11px;background:var(--gold-light)" onclick="setExtraRow(${r.idx}, ${M.lecs})">Max</button>
@@ -1881,28 +2172,42 @@
           <b style="display:block;font-size:14px">${esc(r.n)}</b>
           <small style="color:var(--mu);font-family:monospace">${esc(r.e)}</small>
         </div>
-        <div class="pa-box ${r.s}">${r.s}</div>
+        <div id="pa-box-${r.idx}" class="pa-box ${r.s}">${r.s}</div>
       </div>
     `).join('');
       }
     }
 
+    // Surgical DOM toggle for 0ms tap response on low-end phones
     function toggleRegular(i) {
-      M.rows[i].s = M.rows[i].s === 'P' ? 'A' : 'P';
-      drawSheetList();
+      const next = M.rows[i].s === 'P' ? 'A' : 'P';
+      M.rows[i].s = next;
+      const box = document.getElementById('pa-box-' + i);
+      if (box) {
+        box.className = 'pa-box ' + next;
+        box.textContent = next;
+      }
+      updateCountersDOM();
     }
+
     function setAllRegular(val) {
       M.rows.forEach(r => r.s = val);
       drawSheetList();
     }
     function stepExtra(i, delta) {
       const cur = Number(M.rows[i].s) || 0;
-      M.rows[i].s = Math.max(0, Math.min(M.lecs, cur + delta));
-      drawSheetList();
+      const next = Math.max(0, Math.min(M.lecs, cur + delta));
+      M.rows[i].s = next;
+      const inp = document.getElementById('step-inp-' + i);
+      if (inp) inp.value = next;
+      updateCountersDOM();
     }
     function setExtraRow(i, val) {
-      M.rows[i].s = Math.max(0, Math.min(M.lecs, parseInt(val, 10) || 0));
-      drawSheetList();
+      const next = Math.max(0, Math.min(M.lecs, parseInt(val, 10) || 0));
+      M.rows[i].s = next;
+      const inp = document.getElementById('step-inp-' + i);
+      if (inp) inp.value = next;
+      updateCountersDOM();
     }
     function setAllExtra(val) {
       const v = Math.max(0, Math.min(M.lecs, parseInt(val, 10) || 0));
@@ -1912,14 +2217,20 @@
 
     async function saveAtt() {
       if (!navigator.onLine) {
-        return toast('⚠ You are offline! Reconnect to internet before saving.');
+        return toast('You are offline. Reconnect to internet before saving.');
       }
+      const btn = $('#save-att-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving to Google Sheet…'; }
+
       const marks = {};
       M.rows.forEach(r => { marks[r.e] = r.s; });
       const res = await call('saveAttendance', M.s.classId, M.s.subject, M.date, M.sess, M.lecs, marks);
+
+      if (btn) { btn.disabled = false; btn.textContent = `Save ${M.extra ? 'Activity Attendance' : 'Lecture Attendance'}`; }
       if (res) {
         M.exists = true;
-        toast('✔ ' + res);
+        delete MEM_CACHE['summary_' + M.s.classId];
+        toast(res);
         drawSheet();
       }
     }
@@ -1934,12 +2245,12 @@
 
       v.innerHTML = `
     <div class="card">
-      <h3>📋 Daily Absentee Tracker</h3>
-      <p class="hint">View lecture-wise absentees & copy formatted list for WhatsApp groups</p>
+      <h3>Daily Absentee Tracker</h3>
+      <p class="hint">View lecture-wise absentees and copy formatted list for WhatsApp groups</p>
       <label class="lbl">Select Date</label>
       <input type="date" class="inp" value="${S.absDate}" onchange="S.absDate=this.value;vAbsent()">
     </div>
-    <div class="card empty">Loading absentees for ${esc(S.absDate)}…</div>
+    ${skList(3)}
   `;
 
       const data = await call('getAbsentees', S.classId, S.absDate);
@@ -1951,8 +2262,8 @@
       v.innerHTML = `
     <div class="card">
       <h3>
-        <span>📋 Absentees (${esc(data.date)})</span>
-        ${blocks.length ? `<button class="btn sm gold" onclick="copyAbsentWhatsApp()">📲 Copy for WhatsApp</button>` : ''}
+        <span>Absentees (${esc(data.date)})</span>
+        ${blocks.length ? `<button class="btn sm gold" onclick="copyAbsentWhatsApp()">Copy for WhatsApp</button>` : ''}
       </h3>
       <p class="hint">${esc(data.label)}</p>
       <label class="lbl">Change Date</label>
@@ -1978,7 +2289,7 @@
               </div>
             `).join('')}
           </div>
-        ` : `<div style="color:var(--ok);font-weight:800;font-size:13px">🎉 100% Attendance in this lecture!</div>`}
+        ` : `<div style="color:var(--ok);font-weight:800;font-size:13px">100% Attendance in this lecture</div>`}
       </div>
     `).join('') : `
       <div class="card empty">No lectures marked on ${esc(data.date)} for this class.</div>
@@ -2000,13 +2311,13 @@
       d.blocks.forEach(b => {
         lines.push(`\n*Lecture ${b.lec}: ${b.subject}* (${b.absent.length}/${b.total} Absent)`);
         if (!b.absent.length) {
-          lines.push(`✅ All Present`);
+          lines.push(`All Present`);
         } else {
           b.absent.forEach((st, i) => lines.push(`${i + 1}. ${st.e} - ${st.n}`));
         }
       });
       lines.push(`\n_HOD: ${HOD_NAME}_`);
-      copyText(lines.join('\n'), 'WhatsApp Absentee List Copied ✔');
+      copyText(lines.join('\n'), 'WhatsApp Absentee List Copied');
     }
 
     /* ============================================================================
@@ -2016,15 +2327,29 @@
       const v = $('#view');
       if (!S.classId) { v.innerHTML = noClassCard(); return; }
 
-      v.innerHTML = `<div class="card empty">Loading student roster…</div>`;
+      const stuKey = 'roster_' + S.classId;
+      const cached = cacheGet(stuKey);
+      if (cached) {
+        drawStudentsRoster(cached);
+        if (isCacheFresh(stuKey, STAFF_TTL_MS)) return;
+      } else {
+        v.innerHTML = skList(6);
+      }
+
       const list = await call('listStudents', S.classId);
       if (!list) return;
+      cacheSet(stuKey, list);
+      if (S.tab === 'students') drawStudentsRoster(list);
+    }
+
+    function drawStudentsRoster(list) {
+      const v = $('#view');
       const isHod = S.user.role === 'HOD';
       const curCls = S.classes.find(c => c.id === S.classId);
 
       v.innerHTML = `
     <div class="card">
-      <h3>➕ Add Student to Class</h3>
+      <h3>Add Student to Class</h3>
       <p class="hint">${esc(curCls?.label || '')}</p>
 
       <div class="row2">
@@ -2040,7 +2365,7 @@
       <button class="btn" style="margin-top:12px" onclick="addSingleStudent()">+ Add Student</button>
 
       <details style="margin-top:12px;border-top:1px solid var(--ln);padding-top:10px">
-        <summary style="font-weight:800;color:var(--navy);cursor:pointer;font-size:13px">📥 Bulk Paste Students (Excel / CSV List)</summary>
+        <summary style="font-weight:800;color:var(--navy);cursor:pointer;font-size:13px">Bulk Paste Students (Excel / CSV List)</summary>
         <p class="hint" style="margin-top:6px">One student per line: <code>EnrollmentNo, Full Name</code></p>
         <textarea id="st-bulk" class="inp" placeholder="0112AL231001, Aarav Sharma&#10;0112AL231002, Priya Patel"></textarea>
         <button class="btn gold" style="margin-top:8px" onclick="addBulkStudents()">Import All Students</button>
@@ -2049,9 +2374,9 @@
 
     <div class="card">
       <h3>
-        <span>🎓 Enrolled Students (${list.length})</span>
+        <span>Enrolled Students (${list.length})</span>
       </h3>
-      <input id="st-q" class="inp" placeholder="🔍 Search name or enrollment…" oninput="filterStudentList()" style="margin:8px 0">
+      <input id="st-q" class="inp" placeholder="Search name or enrollment…" oninput="filterStudentList()" style="margin:8px 0">
 
       <div id="st-list-box">
         ${list.length ? list.map(s => `
@@ -2082,7 +2407,8 @@
       if (!e || !n) return toast('Enter both Enrollment No and Student Name');
       const r = await call('addStudents', S.classId, `${e}, ${n}`);
       if (r) {
-        toast(r.added ? 'Student added ✔' : 'Already exists or invalid');
+        delete MEM_CACHE['roster_' + S.classId];
+        toast(r.added ? 'Student added' : 'Already exists or invalid');
         vStudents();
       }
     }
@@ -2092,6 +2418,7 @@
       if (!txt) return toast('Paste student lines first');
       const r = await call('addStudents', S.classId, txt);
       if (r) {
+        delete MEM_CACHE['roster_' + S.classId];
         toast(`${r.added} added` + (r.skipped ? `, ${r.skipped} skipped` : ''));
         vStudents();
       }
@@ -2105,13 +2432,17 @@
         true,
         async () => {
           const r = await call('removeStudent', S.classId, enr);
-          if (r) { toast(r); vStudents(); }
+          if (r) {
+            delete MEM_CACHE['roster_' + S.classId];
+            toast(r);
+            vStudents();
+          }
         }
       );
     }
 
     /* ============================================================================
-     * 7. HOD: SUBJECTS & EXTRA ACTIVITIES (`listSubjects`, `addSubject`, `changeTeacher`)
+     * 7. HOD: SUBJECTS & EXTRA ACTIVITIES (`listSubjects`, `addSubject`, `updatePriorTotal`)
      * ============================================================================ */
     let SUB_FORM_TYPE = 'CLASS';
 
@@ -2119,7 +2450,7 @@
       const v = $('#view');
       if (!S.classId) { v.innerHTML = noClassCard(); return; }
 
-      v.innerHTML = `<div class="card empty">Loading subjects & activities…</div>`;
+      v.innerHTML = skList(4);
       S.subjects = await call('listSubjects', S.classId) || [];
       drawSubjectsView();
     }
@@ -2134,12 +2465,12 @@
 
       v.innerHTML = `
     <div class="card">
-      <h3>📚 Add Subject or Extra Activity</h3>
+      <h3>Add Subject or Extra Activity</h3>
       <p class="hint">${esc(curCls?.label || '')} — Creates a dedicated sheet tab automatically</p>
 
       <div class="seg" style="margin-top:8px">
         <button class="${!isExtra ? 'on' : ''}" onclick="SUB_FORM_TYPE='CLASS';drawSubjectsView()">Regular Subject</button>
-        <button class="${isExtra ? 'on' : ''}" onclick="SUB_FORM_TYPE='EXTRA';drawSubjectsView()">⭐ Extra Activity (HOD)</button>
+        <button class="${isExtra ? 'on' : ''}" onclick="SUB_FORM_TYPE='EXTRA';drawSubjectsView()">Extra Activity (HOD)</button>
       </div>
 
       <label class="lbl">${isExtra ? 'Activity Name (e.g. AI Hackathon, NSS, Workshop)' : 'Subject Name (e.g. Machine Learning, Deep Learning)'}</label>
@@ -2150,7 +2481,7 @@
         <select id="sub-teacher" class="inp">${teacherOpts('')}</select>
       ` : ''}
 
-      <label class="lbl">Prior Total Lectures (Conducted before using app, optional)</label>
+      <label class="lbl">Prior Total Lectures (Total classes held before app, for Column C 'Previous Count')</label>
       <input id="sub-prior" type="number" min="0" class="inp" value="0" placeholder="0">
 
       <button class="btn ${isExtra ? 'gold' : ''}" style="margin-top:12px" onclick="createSubjectItem()">
@@ -2164,9 +2495,11 @@
         <div class="list-item" style="flex-wrap:wrap;gap:8px">
           <div class="info" style="min-width:160px">
             <b>${esc(s.subject)}</b>
-            <div style="margin-top:3px;display:flex;gap:5px;flex-wrap:wrap">
+            <div style="margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">
               <span class="tag ${s.type === 'EXTRA' ? 'extra' : ''}">${s.type === 'EXTRA' ? 'EXTRA ACTIVITY (HOD)' : 'CLASS SUBJECT'}</span>
-              ${s.prior ? `<span class="tag">Prior: ${s.prior} lecs</span>` : ''}
+              <button class="tag" style="cursor:pointer;background:#fff" onclick="editSubjectPrior('${esc(s.subject)}', ${s.prior || 0})" title="Edit Prior Total Classes">
+                Edit Prior Total: ${s.prior || 0} lecs
+              </button>
             </div>
           </div>
           ${s.type !== 'EXTRA' ? `
@@ -2190,14 +2523,30 @@
       const r = await call('addSubject', S.classId, name, teacher, SUB_FORM_TYPE, prior);
       if (r) {
         S.subjects = r;
-        toast((SUB_FORM_TYPE === 'EXTRA' ? 'Extra Activity' : 'Subject') + ' created ✔');
+        toast((SUB_FORM_TYPE === 'EXTRA' ? 'Extra Activity' : 'Subject') + ' created');
         drawSubjectsView();
       }
     }
 
     async function updateSubjectTeacher(subject, teacher) {
       const r = await call('changeTeacher', S.classId, subject, teacher);
-      if (r) toast('✔ ' + r);
+      if (r) toast(r);
+    }
+
+    function editSubjectPrior(subject, currentPrior) {
+      showPromptModal(
+        `Prior Total Classes (${subject})`,
+        `Enter total classes held before using the app (matches 'Previous Count' column C in the Sheet):`,
+        'e.g. 20',
+        String(currentPrior || 0),
+        async val => {
+          const r = await call('updatePriorTotal', S.classId, subject, Number(val) || 0);
+          if (r) {
+            toast(r);
+            vSubjects();
+          }
+        }
+      );
     }
 
     /* ============================================================================
@@ -2206,9 +2555,8 @@
     async function vSetup() {
       const v = $('#view');
       v.innerHTML = `
-    <!-- 1. Create / Manage Classes -->
     <div class="card">
-      <h3>🏫 Create New Class (Branch + Sem + Sec)</h3>
+      <h3>Create New Class (Branch + Sem + Sec)</h3>
       <p class="hint">Creates a dedicated Google Workbook for the class</p>
 
       <label class="lbl">Branch</label>
@@ -2240,7 +2588,7 @@
               </div>
               <div style="display:flex;gap:6px">
                 <button class="btn sm sec" onclick="openRenameClassModal('${esc(c.id)}','${esc(c.branch)}','${esc(c.sem)}','${esc(c.section)}')">Rename</button>
-                <a class="btn sm outline" target="_blank" href="${esc(c.url)}">Sheet ↗</a>
+                <a class="btn sm outline" target="_blank" href="${esc(c.url)}">Sheet</a>
               </div>
             </div>
           `).join('')}
@@ -2248,9 +2596,8 @@
       ` : ''}
     </div>
 
-    <!-- 2. Minimum Attendance % Rule -->
     <div class="card">
-      <h3>🎯 Minimum Attendance Requirement (%)</h3>
+      <h3>Minimum Attendance Requirement (%)</h3>
       <p class="hint">Students below this threshold are highlighted in red on the Master Sheet</p>
       <div class="row2" style="align-items:center">
         <input id="min-pct-inp" type="number" min="1" max="100" class="inp" value="${S.minPct}">
@@ -2258,9 +2605,8 @@
       </div>
     </div>
 
-    <!-- 3. Faculty Accounts -->
     <div class="card">
-      <h3>👩‍🏫 Add Department Faculty</h3>
+      <h3>Add Department Faculty</h3>
       <label class="lbl">Faculty Full Name</label>
       <input id="t-name" class="inp" placeholder="e.g. Prof. Ankit Verma">
 
@@ -2286,7 +2632,7 @@
             </div>
             <div style="display:flex;gap:6px">
               <button class="btn sm sec" onclick="promptResetTeacherPw('${esc(t.username)}')">Reset PW</button>
-              <button class="btn sm red" onclick="confirmRemoveTeacher('${esc(t.username)}','${esc(t.name)}')">✕</button>
+              <button class="btn sm red" onclick="confirmRemoveTeacher('${esc(t.username)}','${esc(t.name)}')">Remove</button>
             </div>
           </div>
         `).join('') : `<div class="empty">No faculty added yet.</div>`}
@@ -2303,8 +2649,9 @@
       const r = await call('createClass', b, sem, sec);
       if (r) {
         S.classes = r;
+        cacheSet('staff_classes_' + S.user.username, r);
         if (!S.classId && r.length) S.classId = r[0].id;
-        toast('Class workbook created ✔');
+        toast('Class workbook created');
         vSetup();
       }
     }
@@ -2342,7 +2689,8 @@
         const r = await call('renameClass', id, nb, ns, nsec);
         if (r) {
           S.classes = r;
-          toast('Class renamed ✔');
+          cacheSet('staff_classes_' + S.user.username, r);
+          toast('Class renamed');
           vSetup();
         }
       };
@@ -2353,7 +2701,7 @@
       const r = await call('setMinPercent', val);
       if (r && r.min) {
         S.minPct = r.min;
-        toast(`Minimum attendance updated to ${r.min}% ✔`);
+        toast(`Minimum attendance updated to ${r.min}%`);
       }
     }
 
@@ -2364,7 +2712,8 @@
       const r = await call('addTeacher', u, n, p);
       if (r) {
         S.teachers = r;
-        toast('Faculty account created ✔');
+        cacheSet('staff_teachers', r);
+        toast('Faculty account created');
         vSetup();
       }
     }
@@ -2374,9 +2723,10 @@
         `Reset Password (@${username})`,
         'Enter a new password (minimum 4 characters):',
         'New password',
+        '',
         async newPass => {
           const r = await call('resetTeacherPassword', username, newPass);
-          if (r) toast('✔ ' + r);
+          if (r) toast(r);
         }
       );
     }
@@ -2389,31 +2739,47 @@
         true,
         async () => {
           const r = await call('removeTeacher', username);
-          if (r) { S.teachers = r; toast('Faculty removed'); vSetup(); }
+          if (r) {
+            S.teachers = r;
+            cacheSet('staff_teachers', r);
+            toast('Faculty removed');
+            vSetup();
+          }
         }
       );
     }
 
     /* ============================================================================
-     * 9. STUDENT DASHBOARD (`getMyAttendance`)
+     * 9. STUDENT DASHBOARD (`getMyAttendance` — Persistent Cache, No Repeated Fetch)
      * ============================================================================ */
-    async function vStudent() {
+    async function vStudent(forceRefresh = false) {
       const v = $('#view');
-      const cacheKey = 'myatt_' + (S.user?.username || '');
-      const cached = cacheGet(cacheKey);
-      if (cached) {
-        drawStudentAttendance(cached, true);
+      const cacheKey = 'myatt_' + (S.user?.classId || '') + '_' + (S.user?.username || '');
+      const cachedEntry = cacheGetEntry(cacheKey);
+
+      // 1. If we have cached data in localStorage, show it immediately (0ms)!
+      if (cachedEntry && cachedEntry.data) {
+        const freshEnough = isCacheFresh(cacheKey, STUDENT_TTL_MS);
+        // Do NOT re-fetch from Google Script if cache is less than 5 mins old (unless user tapped Refresh)
+        if (!forceRefresh && freshEnough) {
+          drawStudentAttendance(cachedEntry.data, false, cachedEntry.ts);
+          return;
+        }
+        // Cache is older than 5 mins or user tapped Refresh -> show cached UI with subtle syncing badge
+        drawStudentAttendance(cachedEntry.data, true, cachedEntry.ts);
       } else {
-        v.innerHTML = `<div class="card empty">Loading your attendance record…</div>`;
+        // First time ever opening -> show smooth Shimmer Skeleton UI
+        v.innerHTML = skStudent();
       }
 
       const d = await call('getMyAttendance');
       if (!d) return;
       cacheSet(cacheKey, d);
-      drawStudentAttendance(d, false);
+      if (forceRefresh) toast('Attendance synced');
+      if (S.tab === 'myatt') drawStudentAttendance(d, false, Date.now());
     }
 
-    function drawStudentAttendance(d, isCached) {
+    function drawStudentAttendance(d, isSyncing, ts) {
       const v = $('#view');
       const col = p => p == null ? 'var(--mu)' : p >= d.min ? 'var(--ok)' : p >= d.min - 10 ? 'var(--warn)' : 'var(--bad)';
       const needMore = (p, t) => {
@@ -2426,10 +2792,15 @@
       const extrasSum = (d.extras || []).reduce((acc, x) => acc + (x.p || 0), 0);
 
       v.innerHTML = `
-    ${isCached ? `<div style="font-size:11px;color:var(--mu);text-align:center;margin-bottom:8px">⚡ Offline-ready cached view • Syncing live…</div>` : ''}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span class="sync-pill">
+        <span class="sync-dot ${isSyncing ? 'pulsing' : ''}"></span>
+        ${isSyncing ? 'Refreshing from server…' : 'Saved on device • Synced ' + timeAgo(ts)}
+      </span>
+      <button class="btn sm sec" onclick="vStudent(true)">Refresh</button>
+    </div>
 
     <div class="card" style="text-align:center;position:relative">
-      <button class="btn sm sec" style="position:absolute;top:12px;right:12px" onclick="vStudent()">↻ Refresh</button>
       <div class="ring-wrap" style="background:conic-gradient(${col(d.overall)} ${(d.overall || 0) * 3.6}deg, var(--ln) 0)">
         <div class="ring-inner">
           <b style="color:${col(d.overall)}">${d.overall == null ? '–' : d.overall + '%'}</b>
@@ -2444,15 +2815,15 @@
       </p>
 
       ${d.overall != null && d.overall < d.min
-          ? `<span class="tag bad" style="padding:5px 12px;font-size:11.5px">⚠ Below ${d.min}% — Attend next <b>${needMore(d.p, d.t)}</b> classes continuously</span>`
+          ? `<span class="tag bad" style="padding:5px 12px;font-size:11.5px">Below ${d.min}% — Attend next <b>${needMore(d.p, d.t)}</b> classes continuously</span>`
           : d.overall != null
-            ? `<span class="tag ok" style="padding:5px 12px;font-size:11.5px">✔ On Track (Above ${d.min}% requirement)</span>`
+            ? `<span class="tag ok" style="padding:5px 12px;font-size:11.5px">On Track (Above ${d.min}% requirement)</span>`
             : `<span class="tag">No classes recorded yet</span>`}
     </div>
 
     <!-- Regular Subjects -->
     <div style="font-size:12px;font-weight:900;color:var(--navy);text-transform:uppercase;margin:14px 4px 8px;letter-spacing:0.04em">
-      📚 Subject-wise Attendance (${(d.subjects || []).length})
+      Subject-wise Attendance (${(d.subjects || []).length})
     </div>
 
     ${(d.subjects || []).length ? d.subjects.map(s => `
@@ -2483,7 +2854,7 @@
     <!-- Extra Activities -->
     ${(d.extras || []).length ? `
       <div style="font-size:12px;font-weight:900;color:var(--navy);text-transform:uppercase;margin:14px 4px 8px;letter-spacing:0.04em">
-        ⭐ Extra Activities & Bonus Credits
+        Extra Activities & Bonus Credits
       </div>
       ${d.extras.map(ex => `
         <div class="card">
@@ -2508,14 +2879,13 @@
     }
 
     /* ============================================================================
-     * 10. PROFILE & DEPARTMENT INFO TAB (Working for HOD, Teacher & Student)
+     * 10. PROFILE & DEPARTMENT INFO TAB
      * ============================================================================ */
     function vProfile() {
       const u = S.user;
       const isStaff = u.role === 'HOD' || u.role === 'TEACHER';
 
       $('#view').innerHTML = `
-    <!-- Institutional & Department Profile Card -->
     <div class="card card-navy" style="text-align:center;padding:20px 16px">
       <div style="display:flex;justify-content:center;margin-bottom:12px">
         ${renderLogos('md')}
@@ -2533,16 +2903,16 @@
       </p>
 
       <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(197,160,89,0.35);border-radius:12px;padding:10px;text-align:left;font-size:12px;line-height:1.6">
-        <div>🏛️ <b>Institute:</b> ${COLLEGE_NAME}</div>
-        <div>🤖 <b>Department:</b> Artificial Intelligence & Machine Learning (AIML)</div>
-        <div>👩‍🏫 <b>HOD:</b> ${HOD_NAME}</div>
-        <div>🌐 <b>Group:</b> BGI (Bhopal | Indore | Mandideep)</div>
+        <div><b>Institute:</b> ${COLLEGE_NAME}</div>
+        <div><b>Department:</b> Artificial Intelligence & Machine Learning (AIML)</div>
+        <div><b>HOD:</b> ${HOD_NAME}</div>
+        <div><b>Group:</b> BGI (Bhopal | Indore | Mandideep)</div>
       </div>
     </div>
 
     ${isStaff ? `
       <div class="card">
-        <h3>🔒 Change My Password</h3>
+        <h3>Change My Password</h3>
         <p class="hint">Update login password for @${esc(u.username)}</p>
         <label class="lbl">Current Password</label>
         <input id="pw-old" type="password" class="inp" placeholder="Enter current password">
@@ -2552,16 +2922,15 @@
       </div>
     ` : ''}
 
-    <!-- Developer Credit Card -->
     <div class="card" style="text-align:center">
       <div style="font-size:11px;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:0.05em">
         System Architecture & Engineering
       </div>
       <div style="font-size:16px;font-weight:900;color:var(--navy);margin:4px 0">
-        Developed by Devlinkhub Team
+        <a href="${DEVLINK_URL}" target="_blank" rel="noopener noreferrer" class="dev-link-plain">Developed by Devlinkhub Team</a>
       </div>
       <p class="hint" style="margin:0">
-        Optimized for Low-Connectivity Campus Zones • BIST Bhopal AIML Portal v4
+        Optimized for Low-Connectivity Campus Zones • BIST Bhopal AIML Portal v4.5
       </p>
     </div>
 
@@ -2576,7 +2945,7 @@
       if (!o || !n) return toast('Enter both old and new password');
       const r = await call('changePassword', o, n);
       if (r) {
-        toast('✔ ' + r);
+        toast(r);
         $('#pw-old').value = '';
         $('#pw-new').value = '';
       }
