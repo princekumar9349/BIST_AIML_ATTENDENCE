@@ -39,7 +39,7 @@ function apiMethod_(name) {
     listSubjects, addSubject, changeTeacher, updatePriorTotal,
     listStudents, addStudents, updateStudentContact, setBranchStudentPin, removeStudent,
     getAttendanceSheet, saveAttendance, getAbsentees,
-    getSummary, getSummaryByDateRange, forceRecompile, getSettings, setMinPercent,
+    getSummary, getSummaryByDateRange, exportAttendanceRangeXlsx, forceRecompile, getSettings, setMinPercent,
     getMyAttendance, getEmailReportSettings, setEmailReportSettings,
     sendTestAttendanceEmail, sendDefaulterReminders
   };
@@ -958,28 +958,31 @@ function sendDefaulterReminders(token, classId) {
     email: String((studentsByEnrollment[student.enrollment] || [])[2] || '').trim()
   }));
   const withEmail = eligible.filter(student => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(student.email));
-  if (!withEmail.length) return { sent: 0, missingEmail: eligible.length, failed: 0, defaulters: eligible.length, minimum: summary.min };
+  if (!eligible.length) return { sent: 0, missingEmail: 0, failed: 0, defaulters: 0, minimum: summary.min, reason: 'No students are below the attendance threshold.' };
+  if (!withEmail.length) return { sent: 0, missingEmail: eligible.length, failed: 0, defaulters: eligible.length, minimum: summary.min, reason: 'Add valid student email addresses in the Students tab.' };
 
   let remaining = 0;
   try { remaining = GmailApp.getRemainingDailyQuota(); }
-  catch (e) { throw new Error('Email permission is not ready. Run authorizeEmailReportAutomation in Apps Script first.'); }
+  catch (e) { throw new Error('Email permission is not ready. Run authorizeEmailReportAutomation in Apps Script, authorize Gmail, and deploy a new version.'); }
   const settings = emailReportSettings_();
   const options = { name: 'BIST AIML Attendance' };
   if (settings.senderEmail) options.from = settings.senderEmail;
 
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, firstError = '';
   withEmail.slice(0, remaining).forEach(student => {
     const subject = 'Please maintain your attendance - below ' + summary.min + '%';
     const body = `Dear ${student.name},\n\nYour current overall attendance is ${student.percentage}%, below the department minimum of ${summary.min}%. Please maintain the required attendance by attending upcoming classes regularly. Contact your faculty or HOD if you need support.\n\nEnrollment No: ${student.enrollment}\nDepartment of AIML\nBIST Bhopal`;
     try { GmailApp.sendEmail(student.email, subject, body, options); sent++; }
-    catch (e) { failed++; }
+    catch (e) { failed++; if (!firstError) firstError = String(e.message || e).slice(0, 180); }
   });
   return {
     sent,
     missingEmail: eligible.length - withEmail.length,
     failed: failed + Math.max(0, withEmail.length - remaining),
     defaulters: eligible.length,
-    minimum: summary.min
+    minimum: summary.min,
+    reason: remaining < withEmail.length ? 'Some messages were not sent because the Apps Script Gmail daily quota was reached.' : '',
+    error: firstError
   };
 }
 
@@ -1178,6 +1181,22 @@ function getSummaryByDateRange(token, classId, startDate, endDate) {
     url: master ? ss.getUrl() + '#gid=' + master.getSheetId() : ss.getUrl(),
     min: getMin_(),
     range: { start: startDate, end: endDate }
+  };
+}
+
+function exportAttendanceRangeXlsx(token, classId, startDate, endDate) {
+  auth_(token, ['HOD']);
+  const summary = getSummaryByDateRange(token, classId, startDate, endDate);
+  const cls = cls_(classId);
+  const fileName = ('Attendance ' + cls.branch + ' Sem ' + cls.sem + ' Sec ' + cls.section + ' ' + startDate + ' to ' + endDate)
+    .replace(/[\\/:*?"<>|]/g, '_');
+  const blob = xlsxReportBlob_(fileName, summary.table);
+  return {
+    fileName: blob.getName(),
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    base64: Utilities.base64Encode(blob.getBytes()),
+    students: Math.max(0, summary.table.length - 2),
+    range: summary.range
   };
 }
 

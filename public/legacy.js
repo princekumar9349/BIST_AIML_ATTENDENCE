@@ -867,6 +867,7 @@
       if (from > to) return toast('Start date must be before end date');
       S.reportFrom = from;
       S.reportTo = to;
+      S.onlyDefaulters = false;
       vReport();
     }
 
@@ -879,6 +880,7 @@
     function clearHodReportRange() {
       S.reportFrom = '';
       S.reportTo = '';
+      S.onlyDefaulters = false;
       vReport();
     }
 
@@ -892,9 +894,18 @@
         false,
         async () => {
           const result = await call('sendDefaulterReminders', S.classId);
-          if (result) toast(`Reminder emails sent to ${result.sent} of ${result.defaulters} defaulters${result.missingEmail ? `; ${result.missingEmail} missing email` : ''}${result.failed ? `; ${result.failed} not sent` : ''}.`);
+          if (result) toast(defaulterEmailStatus(result));
         }
       );
+    }
+
+    function defaulterEmailStatus(result) {
+      const parts = [`Reminder emails sent to ${result.sent} of ${result.defaulters} defaulters`];
+      if (result.missingEmail) parts.push(`${result.missingEmail} missing email`);
+      if (result.failed) parts.push(`${result.failed} not sent`);
+      if (result.reason) parts.push(result.reason);
+      if (result.error) parts.push(`Email error: ${result.error}`);
+      return parts.join('; ') + '.';
     }
 
     function drawReportView(res, isSyncing, ts) {
@@ -912,6 +923,7 @@
       const totRow = table[1];
       const stuRows = table.slice(2);
       const pctIdx = headers.length - 1;
+      const periodSessions = totRow.slice(3, pctIdx - 1).reduce((sum, value) => sum + (Number(value) || 0), 0);
 
       const isLow = r => r[pctIdx] !== '' && Number(r[pctIdx]) < min;
       const defaultersCount = stuRows.filter(isLow).length;
@@ -939,7 +951,11 @@
         <button class="btn gold" onclick="applyHodReportRange()">Show Period</button>
         <button class="btn sec" onclick="clearHodReportRange()">Show All-Time Report</button>
       </div>
-      ${res.range ? `<p class="hint" style="margin-bottom:0">Showing ${esc(res.range.start)} through ${esc(res.range.end)}.</p>` : ''}
+      ${res.range ? `
+        <p class="hint" style="margin-bottom:0">Showing ${esc(res.range.start)} through ${esc(res.range.end)}.</p>
+        ${periodSessions ? '' : '<p class="hint" style="margin:6px 0 0;color:var(--warn)">No attendance sessions were found for these dates. Try a wider date range or confirm attendance was saved for this class.</p>'}
+        <button class="btn gold" style="margin-top:10px" onclick="exportAttendanceRange()">Export Filtered Excel Workbook</button>
+      ` : ''}
     </div>
 
     <div class="row3" style="margin-bottom:12px">
@@ -1004,6 +1020,29 @@
       document.querySelectorAll('#master-tbl tr.stu-tr').forEach(tr => {
         tr.style.display = tr.dataset.q.includes(q) ? '' : 'none';
       });
+    }
+
+    async function exportAttendanceRange() {
+      if (!S.reportFrom || !S.reportTo) return toast('Choose a date range first');
+      const result = await call('exportAttendanceRangeXlsx', S.classId, S.reportFrom, S.reportTo);
+      if (!result?.base64) return;
+      try {
+        const binary = atob(result.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: result.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = result.fileName || 'Attendance-Filtered-Report.xlsx';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        toast(`Workbook exported for ${result.range.start} to ${result.range.end}`);
+      } catch (error) {
+        toast('Could not download the workbook: ' + (error.message || String(error)));
+      }
     }
 
     /* ============================================================================
@@ -1347,10 +1386,7 @@
         if (M === model) drawSheet();
         if (sendReminders) {
           const reminders = await call('sendDefaulterReminders', model.s.classId);
-          if (reminders) {
-            const pending = reminders.missingEmail + reminders.failed;
-            toast(`Attendance saved. Reminder emails sent to ${reminders.sent} of ${reminders.defaulters} defaulters${pending ? `; ${reminders.missingEmail} missing email, ${reminders.failed} not sent` : ''}.`);
-          }
+          if (reminders) toast(`Attendance saved. ${defaulterEmailStatus(reminders)}`);
         }
       }
       if (btn?.isConnected) { btn.disabled = false; btn.textContent = `Save ${model.extra ? 'Activity Attendance' : 'Lecture Attendance'}`; }
