@@ -2106,9 +2106,19 @@
     async function vProfile() {
       const u = S.user;
       const isStaff = u.role === 'HOD' || u.role === 'TEACHER';
-      const emailReportSettings = u.role === 'HOD'
-        ? await call('getEmailReportSettings') || { email: '', senderEmail: '', senderAliases: [], daily: true, weekly: true, monthly: true, hour: 18 }
-        : null;
+      let reportsBackendAvailable = true;
+      let emailReportSettings = null;
+      if (u.role === 'HOD') {
+        emailReportSettings = { email: '', senderEmail: '', senderAliases: [], daily: true, weekly: true, monthly: true, hour: 18 };
+        try {
+          // Avoid the generic API toast here so Profile remains usable when
+          // the deployed Apps Script version predates attendance reports.
+          emailReportSettings = await rawPost('getEmailReportSettings', [S.token]) || emailReportSettings;
+        } catch (error) {
+          reportsBackendAvailable = false;
+          console.warn('Attendance report settings are unavailable in the deployed Apps Script version.', error);
+        }
+      }
 
       $('#view').innerHTML = `
     <div class="card card-navy" style="text-align:center;padding:20px 16px">
@@ -2149,6 +2159,7 @@
 
       <div class="card">
         <h3>Automatic Attendance Emails</h3>
+        ${!reportsBackendAvailable ? '<p class="hint" style="color:#b91c1c">Email reports are not available in the connected Apps Script deployment yet. Redeploy the latest <b>code.gs</b> as a new version, then reopen Profile.</p>' : ''}
         <p class="hint">Choose the reports and sending time. Weekly and monthly reports include an Excel workbook.</p>
         <label class="lbl" for="report-email">Report recipient email</label>
         <input id="report-email" class="inp" type="email" value="${esc(emailReportSettings.email)}" placeholder="hod@example.com" autocomplete="email">
