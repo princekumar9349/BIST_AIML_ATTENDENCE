@@ -15,7 +15,25 @@
     // Your Live Google Apps Script Execution URL
     const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec";
     let GAS_URL = DEFAULT_GAS_URL;
-    try { GAS_URL = localStorage.getItem('bist_gas_url') || DEFAULT_GAS_URL; } catch (e) { }
+    try { localStorage.removeItem('bist_gas_url'); } catch (e) { }
+
+    // Resolve the API URL from the stable Apps Script deployment so all
+    // devices use the same centrally configured endpoint.
+    async function loadSharedAppsScriptUrl() {
+      try {
+        const response = await fetch(DEFAULT_GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ fn: 'getAppsScriptUrl', args: [] }),
+          cache: 'no-store'
+        });
+        const payload = await response.json();
+        const value = payload?.data;
+        if (payload?.ok && validAppsScriptUrl(value)) GAS_URL = value;
+      } catch (error) {
+        console.warn('Could not load shared Apps Script URL; using the default endpoint.', error);
+      }
+    }
 
     // Cache TTL Rules (in milliseconds)
     const STUDENT_TTL_MS = 5 * 60 * 1000; // 5 minutes persistent student cache (no repeated fetching!)
@@ -428,7 +446,8 @@
         await start({ token: tk, user: savedUser });
         // Verify token silently in background
         run('resume', tk).then(r => {
-          if (!r || !r.user) logout(true);
+          // A delayed resume response must never log out a newer session.
+          if ((!r || !r.user) && S.token === tk) logout(true);
         }).catch(() => { });
         return;
       }
@@ -633,18 +652,20 @@
      * ============================================================================ */
     async function start(r) {
       if (!r || !r.user) return;
-      S.token = r.token;
-      S.user = r.user;
-      saveSession(r.token, r.user);
+      const sessionToken = r.token;
+      const user = r.user;
+      S.token = sessionToken;
+      S.user = user;
+      saveSession(sessionToken, user);
 
-      const role = S.user.role;
+      const role = user.role;
       if (role === 'STUDENT') {
         tab('myatt');
         return;
       }
 
       // Render shell immediately with cached classes if available
-      const cachedClasses = cacheGet('staff_classes_' + S.user.username);
+      const cachedClasses = cacheGet('staff_classes_' + user.username);
       const cachedTeachers = cacheGet('staff_teachers');
       if (cachedClasses) {
         S.classes = cachedClasses;
@@ -685,7 +706,11 @@
         if (settings && settings.min) S.minPct = settings.min;
       }
 
-      cacheSet('staff_classes_' + S.user.username, S.classes);
+      // The session may have been cleared while the network request was in
+      // flight (for example, an expired saved token failed silent resume).
+      if (S.token !== sessionToken || S.user !== user) return;
+
+      cacheSet('staff_classes_' + user.username, S.classes);
       if (role === 'HOD') cacheSet('staff_teachers', S.teachers);
 
       if (!S.classId || !S.classes.some(c => c.id === S.classId)) {
@@ -1735,10 +1760,23 @@
     function saveAppsScriptUrl() {
       const value = $('#appscript-url')?.value.trim();
       if (!validAppsScriptUrl(value)) return toast('Enter a valid Apps Script Web App URL ending in /exec');
-      try { localStorage.setItem('bist_gas_url', value); } catch (e) { return toast('Could not save the connection in this browser'); }
-      GAS_URL = value;
-      toast('Apps Script URL saved; reconnecting…');
-      setTimeout(() => location.reload(), 700);
+      rawPostTo(DEFAULT_GAS_URL, 'setAppsScriptUrl', [S.token, value]).then(() => {
+        GAS_URL = value;
+        toast('Shared Apps Script URL saved; reconnecting all devices…');
+        setTimeout(() => location.reload(), 700);
+      }).catch(error => toast('Could not save shared URL: ' + (error.message || String(error))));
+    }
+
+    async function rawPostTo(url, fn, args) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ fn, args }),
+        cache: 'no-store'
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Server error');
+      return json.data;
     }
 
     async function testAppsScriptConnection() {
@@ -2176,5 +2214,8 @@
       }
     }
 
-    window.onload = init;
+    window.onload = async () => {
+      await loadSharedAppsScriptUrl();
+      await init();
+    };
   

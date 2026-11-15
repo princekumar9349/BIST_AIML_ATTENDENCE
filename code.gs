@@ -45,7 +45,7 @@ function doPost(e) {
       'getAttendanceSheet', 'saveAttendance', 'getAbsentees',
       'getSummary', 'getSummaryByDateRange', 'forceRecompile', 'getSettings', 'setMinPercent',
       'getMyAttendance', 'getEmailReportSettings', 'setEmailReportSettings',
-      'sendTestAttendanceEmail', 'batchCall'
+      'sendTestAttendanceEmail', 'getAppsScriptUrl', 'setAppsScriptUrl', 'batchCall'
     ];
 
     if (!allowed.includes(fn) || typeof this[fn] !== 'function') {
@@ -59,6 +59,25 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message || String(err) }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// The deployed default endpoint is the stable discovery point shared by all
+// devices. HODs can update the active data API URL once from Profile.
+const APPS_SCRIPT_URL_KEY = 'ACTIVE_APPS_SCRIPT_URL';
+const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec';
+
+function getAppsScriptUrl() {
+  return PropertiesService.getScriptProperties().getProperty(APPS_SCRIPT_URL_KEY) || DEFAULT_APPS_SCRIPT_URL;
+}
+
+function setAppsScriptUrl(token, url) {
+  auth_(token, ['HOD']);
+  const value = String(url || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec\/?$/.test(value)) {
+    throw new Error('Enter a valid Apps Script Web App URL ending in /exec');
+  }
+  PropertiesService.getScriptProperties().setProperty(APPS_SCRIPT_URL_KEY, value);
+  return { saved: true };
 }
 
 /**

@@ -1,4 +1,4 @@
-const CACHE_NAME = "bist-aiml-pwa-v6";
+const CACHE_NAME = "bist-aiml-pwa-v7";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/legacy.js", "/bistimages.jpg", "/bansal....png"];
 
 function cacheResponse(event, request, response, cacheKey = request) {
