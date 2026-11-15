@@ -13,7 +13,7 @@
     const DEVLINK_URL = 'https://devlinkhub.in';
 
     // Your Live Google Apps Script Execution URL
-    const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec";
+    const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbzm8Gwe0G9f2sDZ08zR69jJ17Sa1eD9f4rB-f5aT3NhdViN6IqkLrmNKuyx4WvsiAS2yA/exec";
     let GAS_URL = DEFAULT_GAS_URL;
     try { localStorage.removeItem('bist_gas_url'); } catch (e) { }
 

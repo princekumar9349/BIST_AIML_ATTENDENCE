@@ -64,10 +64,19 @@ function doPost(e) {
 // The deployed default endpoint is the stable discovery point shared by all
 // devices. HODs can update the active data API URL once from Profile.
 const APPS_SCRIPT_URL_KEY = 'ACTIVE_APPS_SCRIPT_URL';
-const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec';
+const DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzm8Gwe0G9f2sDZ08zR69jJ17Sa1eD9f4rB-f5aT3NhdViN6IqkLrmNKuyx4WvsiAS2yA/exec';
+const PREVIOUS_DEFAULT_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec';
 
 function getAppsScriptUrl() {
-  return PropertiesService.getScriptProperties().getProperty(APPS_SCRIPT_URL_KEY) || DEFAULT_APPS_SCRIPT_URL;
+  const props = PropertiesService.getScriptProperties();
+  let saved = props.getProperty(APPS_SCRIPT_URL_KEY);
+  // Migrate the former hard-coded URL once so every device converges on the
+  // newly supplied deployment URL after this script version is deployed.
+  if (saved === PREVIOUS_DEFAULT_APPS_SCRIPT_URL) {
+    saved = DEFAULT_APPS_SCRIPT_URL;
+    props.setProperty(APPS_SCRIPT_URL_KEY, saved);
+  }
+  return saved || DEFAULT_APPS_SCRIPT_URL;
 }
 
 function setAppsScriptUrl(token, url) {
