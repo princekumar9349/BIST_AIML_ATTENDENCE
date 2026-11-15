@@ -43,8 +43,9 @@ function doPost(e) {
       'listSubjects', 'addSubject', 'changeTeacher', 'updatePriorTotal',
       'listStudents', 'addStudents', 'removeStudent',
       'getAttendanceSheet', 'saveAttendance', 'getAbsentees',
-      'getSummary', 'forceRecompile', 'getSettings', 'setMinPercent',
-      'getMyAttendance', 'batchCall'
+      'getSummary', 'getSummaryByDateRange', 'forceRecompile', 'getSettings', 'setMinPercent',
+      'getMyAttendance', 'getEmailReportSettings', 'setEmailReportSettings',
+      'sendTestAttendanceEmail', 'batchCall'
     ];
 
     if (!allowed.includes(fn) || typeof this[fn] !== 'function') {
@@ -216,7 +217,8 @@ function setupTriggers() {
   });
   ScriptApp.newTrigger('autoCompile').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('nightlyCompile').timeBased().everyDays(1).atHour(2).create();
-  Logger.log('Triggers set: autoCompile (10 min), nightlyCompile (daily 2am)');
+  setupEmailReportTriggers_();
+  Logger.log('Triggers set: autoCompile, nightlyCompile, and daily/weekly/monthly email reports');
 }
 
 function label_(c) { return c.branch + ' • Sem ' + c.sem + ' • Sec ' + c.section; }
@@ -286,6 +288,10 @@ function changePassword(token, oldPass, newPass) {
 /* ================= CLASSES (Branch + Semester + Section) ================= */
 
 function publicClasses() {
+  // Student login must show the current registry, not a cached class list.
+  // The registry is tiny, so refresh just this cache on each public list read.
+  cache_().remove('reg:Classes');
+  delete MEMO_['reg:Classes'];
   return classes_().map(c => ({ id: c.id, branch: c.branch, sem: c.sem, section: c.section }));
 }
 
@@ -560,14 +566,15 @@ function getAttendanceSheet(token, classId, subject, date, sess) {
   const stu = studentRows_(classId);
   if (!stu.length) return { rows: [], lecs: null, exists: false, extra };
 
-  let d = sh.getDataRange().getDisplayValues();
-  // Only sync if row count doesn't match student count
-  if (d.length - 1 < stu.length) {
+  let lastRow = sh.getLastRow();
+  // Only sync if row count doesn't match student count.
+  if (lastRow - 1 < stu.length) {
     syncSheet_(sh, ss, stu);
-    d = sh.getDataRange().getDisplayValues();
+    lastRow = sh.getLastRow();
   }
 
-  const heads = d[0];
+  const lastCol = Math.max(3, sh.getLastColumn());
+  const heads = sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
   let col = -1, lecs = null;
   if (extra) {
     const pre = date + ' S' + sess + ' x';
@@ -576,8 +583,11 @@ function getAttendanceSheet(token, classId, subject, date, sess) {
   } else {
     col = heads.indexOf(date + ' L' + sess);
   }
+  const count = Math.max(0, lastRow - 1);
+  const roster = count ? sh.getRange(2, 1, count, 2).getDisplayValues() : [];
+  const marks = col > -1 && count ? sh.getRange(2, col + 1, count, 1).getDisplayValues() : [];
   return {
-    rows: d.slice(1).filter(r => r[0]).map(r => ({ e: r[0], n: r[1], s: col > -1 && r[col] !== '' ? r[col] : null })),
+    rows: roster.map((r, i) => ({ e: r[0], n: r[1], s: marks[i] && marks[i][0] !== '' ? marks[i][0] : null })).filter(r => r.e),
     lecs, exists: col > -1, extra
   };
 }
@@ -595,11 +605,11 @@ function saveAttendance(token, classId, subject, date, sess, lecs, marks) {
   const ss = ss_(classId);
   const sh = ss.getSheetByName(sr[2]);
 
-  const d = sh.getDataRange().getDisplayValues();
-  const n = d.length - 1;
+  const n = sh.getLastRow() - 1;
   if (n < 1) throw new Error('Pehle students add karo');
 
-  const heads = d[0];
+  const heads = sh.getRange(1, 1, 1, Math.max(3, sh.getLastColumn())).getDisplayValues()[0];
+  const enrollments = sh.getRange(2, 1, n, 1).getDisplayValues().map(r => r[0]);
   let header, prefix = '';
   if (extra) {
     lecs = Math.max(1, Math.min(99, parseInt(lecs, 10) || 0));
@@ -612,15 +622,12 @@ function saveAttendance(token, classId, subject, date, sess, lecs, marks) {
   let col = extra ? heads.findIndex((h, i) => i >= 3 && h.indexOf(prefix) === 0) + 1 : heads.indexOf(header) + 1;
   if (!col) {
     col = heads.length + 1;
-    sh.getRange(1, col).setValue(header).setFontWeight('bold');
-  } else if (extra && heads[col - 1] !== header) {
-    sh.getRange(1, col).setValue(header);
   }
 
   const vals = new Array(n);
   let absent = 0;
   for (let i = 1; i <= n; i++) {
-    const enr = d[i][0];
+    const enr = enrollments[i - 1];
     if (extra) {
       vals[i - 1] = [Math.max(0, Math.min(lecs, parseInt(marks[enr], 10) || 0))];
     } else {
@@ -630,7 +637,7 @@ function saveAttendance(token, classId, subject, date, sess, lecs, marks) {
     }
   }
 
-  sh.getRange(2, col, n, 1).setValues(vals);
+  sh.getRange(1, col, n + 1, 1).setValues([[header]].concat(vals));
   markDirty_(classId);
   bumpVer_(classId);
 
@@ -746,6 +753,75 @@ function getSummary(token, classId) {
   return compileClass_(classId);
 }
 
+function getSummaryByDateRange(token, classId, startDate, endDate) {
+  auth_(token, ['HOD']);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || '') || !/^\d{4}-\d{2}-\d{2}$/.test(endDate || '') || startDate > endDate)
+    throw new Error('Choose a valid start and end date');
+
+  const ss = ss_(classId);
+  const subjects = rows_('Subjects').filter(r => r[0] === classId);
+  const regular = subjects.filter(r => r[4] !== 'EXTRA');
+  const extras = subjects.filter(r => r[4] === 'EXTRA');
+  const students = studentRows_(classId).sort((a, b) => numSort_(a[0], b[0]));
+  const columns = subjects.map(sr => {
+    const sh = ss.getSheetByName(sr[2]);
+    const data = sh ? sh.getDataRange().getDisplayValues() : [];
+    const cols = [];
+    let total = 0;
+    if (data.length) {
+      for (let j = 3; j < data[0].length; j++) {
+        const header = data[0][j];
+        const regularMatch = /^(\d{4}-\d{2}-\d{2}) L\d+$/.exec(header);
+        const extraMatch = /^(\d{4}-\d{2}-\d{2}) S\d+ x(\d+)$/.exec(header);
+        const dateMatch = sr[4] === 'EXTRA' ? extraMatch : regularMatch;
+        if (!dateMatch || dateMatch[1] < startDate || dateMatch[1] > endDate) continue;
+        cols.push(j);
+        total += sr[4] === 'EXTRA' ? Number(extraMatch[2]) || 0 : 1;
+      }
+    }
+    return { sr, data, cols, total };
+  });
+
+  const attendance = {};
+  students.forEach(st => attendance[st[0]] = {});
+  columns.forEach(({ sr, data, cols }) => {
+    const isExtra = sr[4] === 'EXTRA';
+    for (let i = 1; i < data.length; i++) {
+      const enrollment = data[i][0];
+      if (!enrollment || !attendance[enrollment]) continue;
+      let present = 0;
+      cols.forEach(col => {
+        const value = data[i][col];
+        if (isExtra) present += Number(value) || 0;
+        else if (value === 'P') present++;
+      });
+      attendance[enrollment][sr[2]] = present;
+    }
+  });
+
+  const regCols = columns.filter(c => c.sr[4] !== 'EXTRA');
+  const extraCols = columns.filter(c => c.sr[4] === 'EXTRA');
+  const denominator = regCols.reduce((sum, c) => sum + c.total, 0);
+  const header = ['S.NO.', 'ENROLLMENT NO.', 'STUDENT NAME'].concat(regular.map(r => r[1]), extras.map(r => r[1]), ['TOTAL', 'PERCENTAGE']);
+  const totalRow = ['', '', 'Total Classes'].concat(regCols.map(c => c.total), extraCols.map(c => c.total || ''), [denominator, denominator ? 100 : '']);
+  const table = [header, totalRow];
+  students.forEach((st, index) => {
+    const regP = regular.map(sr => attendance[st[0]][sr[2]] || 0);
+    const extraP = extras.map(sr => attendance[st[0]][sr[2]] || 0);
+    const presentTotal = regP.concat(extraP).reduce((sum, count) => sum + count, 0);
+    const percent = denominator ? Math.round(Math.min(100, presentTotal * 100 / denominator) * 100) / 100 : '';
+    table.push([index + 1, st[0], st[1]].concat(regP, extraP.map(v => v || ''), [presentTotal, percent]));
+  });
+
+  const master = ss.getSheetByName('Master');
+  return {
+    table,
+    url: master ? ss.getUrl() + '#gid=' + master.getSheetId() : ss.getUrl(),
+    min: getMin_(),
+    range: { start: startDate, end: endDate }
+  };
+}
+
 /**
  * Call this when HOD manually edits 'Previous Count' or 'Extra Activity' inside Google Sheets
  */
@@ -830,4 +906,228 @@ function getMyAttendance(token) {
     user: u, min: getMin_(), p: P, t: T, subjects, extras,
     overall: T ? Math.round(Math.min(100, P * 100 / T) * 10) / 10 : null
   };
+}
+
+/* ================= SCHEDULED EMAIL ATTENDANCE REPORTS ================= */
+
+const EMAIL_REPORT_RECIPIENT = 'ATTENDANCE_REPORT_EMAIL';
+const EMAIL_REPORT_SETTINGS = 'ATTENDANCE_REPORT_SETTINGS';
+const EMAIL_REPORT_HANDLERS = ['sendDailyAttendanceReport', 'sendWeeklyAttendanceReport', 'sendMonthlyAttendanceReport'];
+
+function emailReportSettings_() {
+  const props = PropertiesService.getScriptProperties();
+  let saved = {};
+  try { saved = JSON.parse(props.getProperty(EMAIL_REPORT_SETTINGS) || '{}'); } catch (e) {}
+  return {
+    email: props.getProperty(EMAIL_REPORT_RECIPIENT) || saved.email || '',
+    senderEmail: saved.senderEmail || '',
+    daily: saved.daily !== false,
+    weekly: saved.weekly !== false,
+    monthly: saved.monthly !== false,
+    hour: Number.isInteger(Number(saved.hour)) && Number(saved.hour) >= 0 && Number(saved.hour) <= 23 ? Number(saved.hour) : 18
+  };
+}
+
+function getEmailReportSettings(token) {
+  auth_(token, ['HOD']);
+  const settings = emailReportSettings_();
+  settings.senderAliases = GmailApp.getAliases();
+  settings.enabled = ScriptApp.getProjectTriggers().some(t => EMAIL_REPORT_HANDLERS.includes(t.getHandlerFunction()));
+  return settings;
+}
+
+function setEmailReportSettings(token, email, daily, weekly, monthly, hour, senderEmail) {
+  auth_(token, ['HOD']);
+  email = String(email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid report email address');
+  hour = Number(hour);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error('Choose a valid report hour');
+  senderEmail = String(senderEmail || '').trim();
+  if (senderEmail && !GmailApp.getAliases().includes(senderEmail)) throw new Error('Sender ID must be an alias configured on the Apps Script owner Gmail account');
+  const settings = { email, senderEmail, daily: daily === true, weekly: weekly === true, monthly: monthly === true, hour };
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(EMAIL_REPORT_RECIPIENT, email);
+  props.setProperty(EMAIL_REPORT_SETTINGS, JSON.stringify(settings));
+  installEmailReportTriggers_(settings);
+  settings.enabled = settings.daily || settings.weekly || settings.monthly;
+  return settings;
+}
+
+function sendTestAttendanceEmail(token) {
+  auth_(token, ['HOD']);
+  const settings = emailReportSettings_();
+  if (!settings.email) throw new Error('Save a report recipient email first');
+  const selected = [settings.daily && 'Daily', settings.weekly && 'Weekly', settings.monthly && 'Monthly'].filter(Boolean);
+  const schedule = selected.length ? selected.join(', ') : 'No reports enabled';
+  const options = {
+    subject: 'Test email — BIST AIML Attendance Reports',
+    name: 'BIST AIML Attendance'
+  };
+  if (settings.senderEmail) options.from = settings.senderEmail;
+  GmailApp.sendEmail(settings.email, options.subject, `This is a test email from the BIST AIML Attendance system.\n\nRecipient: ${settings.email}\nEnabled reports: ${schedule}\nScheduled hour: about ${String(settings.hour).padStart(2, '0')}:00 (${Session.getScriptTimeZone()}).`, options);
+  return { sent: true, email: settings.email };
+}
+
+function installEmailReportTriggers_(settings) {
+  settings = settings || emailReportSettings_();
+  const existing = ScriptApp.getProjectTriggers();
+  existing.forEach(t => {
+    if (EMAIL_REPORT_HANDLERS.includes(t.getHandlerFunction())) ScriptApp.deleteTrigger(t);
+  });
+  if (settings.daily) ScriptApp.newTrigger('sendDailyAttendanceReport').timeBased().everyDays(1).atHour(settings.hour).create();
+  if (settings.weekly) ScriptApp.newTrigger('sendWeeklyAttendanceReport').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(settings.hour).create();
+  if (settings.monthly) ScriptApp.newTrigger('sendMonthlyAttendanceReport').timeBased().onMonthDay(1).atHour(settings.hour).create();
+}
+
+// Run once in the Apps Script editor after updating the script to grant Gmail,
+// Sheets, Drive export, and trigger permissions. HOD saves the destination in Setup.
+function authorizeEmailReportAutomation() {
+  MailApp.getRemainingDailyQuota();
+  GmailApp.getAliases();
+  ScriptApp.getProjectTriggers();
+  UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
+  });
+  return 'Email automation permissions are ready. Save the report email in the HOD Setup tab.';
+}
+
+function reportDate_(date, offset) {
+  const parts = String(date).split('-').map(Number);
+  const d = new Date(parts[0], parts[1] - 1, parts[2] + (offset || 0), 12);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function reportToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+
+function collectAttendanceRecords_(startDate, endDate) {
+  const classes = classes_();
+  const studentsByClass = {};
+  const records = [];
+  classes.forEach(c => {
+    const students = studentRows_(c.id);
+    studentsByClass[c.id] = students;
+    const ss = ss_(c.id);
+    rows_('Subjects').filter(sr => sr[0] === c.id && sr[4] !== 'EXTRA').forEach(sr => {
+      const sh = ss.getSheetByName(sr[2]);
+      if (!sh) return;
+      const values = sh.getDataRange().getDisplayValues();
+      if (!values.length) return;
+      for (let col = 3; col < values[0].length; col++) {
+        const match = /^(\d{4}-\d{2}-\d{2}) L(\d+)$/.exec(values[0][col]);
+        if (!match || match[1] < startDate || match[1] > endDate) continue;
+        for (let row = 1; row < values.length; row++) {
+          const status = values[row][col];
+          if (!values[row][0] || (status !== 'P' && status !== 'A')) continue;
+          records.push({
+            classId: c.id, classLabel: label_(c), subject: sr[1], date: match[1], lecture: Number(match[2]),
+            enrollment: values[row][0], name: values[row][1], status
+          });
+        }
+      }
+    });
+  });
+  records.sort((a, b) => a.date.localeCompare(b.date) || a.classLabel.localeCompare(b.classLabel) || a.subject.localeCompare(b.subject) || a.lecture - b.lecture || numSort_(a.enrollment, b.enrollment));
+  return { classes, studentsByClass, records };
+}
+
+function htmlEscapeReport_(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function emailReport_(subject, htmlBody, attachments) {
+  const to = PropertiesService.getScriptProperties().getProperty(EMAIL_REPORT_RECIPIENT);
+  if (!to) throw new Error('Set the attendance report email in HOD Setup first');
+  const options = { htmlBody, name: 'BIST AIML Attendance' };
+  if (attachments && attachments.length) options.attachments = attachments;
+  const senderEmail = emailReportSettings_().senderEmail;
+  if (senderEmail) options.from = senderEmail;
+  GmailApp.sendEmail(to, subject, htmlBody.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), options);
+}
+
+function sendDailyAttendanceReport() {
+  const date = reportToday_();
+  const data = collectAttendanceRecords_(date, date);
+  const groups = {};
+  data.records.forEach(r => {
+    const key = [r.classLabel, r.subject, r.lecture].join('|');
+    if (!groups[key]) groups[key] = { classLabel: r.classLabel, subject: r.subject, lecture: r.lecture, present: [], absent: [] };
+    groups[key][r.status === 'P' ? 'present' : 'absent'].push(r);
+  });
+  const sections = Object.keys(groups).map(k => {
+    const g = groups[k];
+    const people = list => list.length ? list.map(r => `${htmlEscapeReport_(r.name)} (${htmlEscapeReport_(r.enrollment)})`).join(', ') : 'None';
+    return `<h3>${htmlEscapeReport_(g.classLabel)} — ${htmlEscapeReport_(g.subject)}, Lecture ${g.lecture}</h3><p><b>Present (${g.present.length}):</b> ${people(g.present)}</p><p><b>Absent (${g.absent.length}):</b> ${people(g.absent)}</p>`;
+  });
+  const html = `<h2>Daily Attendance — ${date}</h2>${sections.length ? sections.join('') : '<p>No attendance has been marked today.</p>'}`;
+  emailReport_(`Daily Attendance Report — ${date}`, html);
+  return { date, records: data.records.length };
+}
+
+function xlsxReportBlob_(fileName, rows) {
+  const book = SpreadsheetApp.create(fileName);
+  try {
+    const sheet = book.getSheets()[0];
+    sheet.setName('Attendance');
+    const width = Math.max(1, rows.reduce((m, row) => Math.max(m, row.length), 0));
+    const padded = rows.map(row => row.concat(new Array(width - row.length).fill('')));
+    sheet.getRange(1, 1, padded.length, width).setValues(padded);
+    sheet.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#0a192f').setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, width);
+    const url = 'https://www.googleapis.com/drive/v3/files/' + book.getId() + '/export?mimeType=' + encodeURIComponent('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const response = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) throw new Error('Excel export failed: ' + response.getContentText());
+    return response.getBlob().setName(fileName + '.xlsx');
+  } finally {
+    DriveApp.getFileById(book.getId()).setTrashed(true);
+  }
+}
+
+function sendWeeklyAttendanceReport() {
+  const today = reportToday_();
+  const endDate = reportDate_(today, -1);
+  const startDate = reportDate_(endDate, -6);
+  const data = collectAttendanceRecords_(startDate, endDate);
+  const rows = [['Class', 'Date', 'Subject', 'Lecture', 'Enrollment No', 'Student Name', 'Status']];
+  data.records.forEach(r => rows.push([r.classLabel, r.date, r.subject, r.lecture, r.enrollment, r.name, r.status === 'P' ? 'Present' : 'Absent']));
+  if (rows.length === 1) rows.push(['No attendance records for this week']);
+  const file = xlsxReportBlob_(`Weekly Attendance ${startDate} to ${endDate}`, rows);
+  const present = data.records.filter(r => r.status === 'P').length;
+  const absent = data.records.length - present;
+  emailReport_(`Weekly Attendance Report — ${startDate} to ${endDate}`, `<h2>Weekly Attendance Report</h2><p>Period: ${startDate} to ${endDate}</p><p>Present marks: ${present} · Absent marks: ${absent}</p><p>The Excel workbook contains each marked student attendance record for the week.</p>`, [file]);
+  return { startDate, endDate, records: data.records.length };
+}
+
+function sendMonthlyAttendanceReport() {
+  const today = reportToday_();
+  const endDate = reportDate_(today, -1);
+  const endParts = endDate.split('-').map(Number);
+  const startDate = Utilities.formatDate(new Date(endParts[0], endParts[1] - 1, 1, 12), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const data = collectAttendanceRecords_(startDate, endDate);
+  const byClassAndStudent = {};
+  data.classes.forEach(c => {
+    const key = c.id;
+    byClassAndStudent[key] = {};
+    (data.studentsByClass[key] || []).forEach(s => byClassAndStudent[key][s[0]] = { classLabel: label_(c), enrollment: s[0], name: s[1], present: 0, total: 0 });
+  });
+  data.records.forEach(r => {
+    const student = byClassAndStudent[r.classId] && byClassAndStudent[r.classId][r.enrollment];
+    if (!student) return;
+    student.total++;
+    if (r.status === 'P') student.present++;
+  });
+  const reportRows = [['Class', 'Enrollment No', 'Student Name', 'Present Sessions', 'Marked Sessions', 'Attendance %']];
+  const all = [];
+  Object.keys(byClassAndStudent).forEach(id => Object.keys(byClassAndStudent[id]).forEach(enrollment => {
+    const s = byClassAndStudent[id][enrollment];
+    s.percent = s.total ? Math.round(s.present * 10000 / s.total) / 100 : 0;
+    all.push(s);
+    reportRows.push([s.classLabel, s.enrollment, s.name, s.present, s.total, s.percent]);
+  }));
+  const workbook = xlsxReportBlob_(`Monthly Overall Attendance ${startDate} to ${endDate}`, reportRows);
+  const summaryRows = all.slice(0, 100).map(s => `<tr><td>${htmlEscapeReport_(s.classLabel)}</td><td>${htmlEscapeReport_(s.enrollment)}</td><td>${htmlEscapeReport_(s.name)}</td><td>${s.present}/${s.total}</td><td>${s.percent}%</td></tr>`).join('');
+  const omitted = all.length > 100 ? `<p>${all.length - 100} more students are included in the attached Excel workbook.</p>` : '';
+  const html = `<h2>Monthly Overall Attendance</h2><p>Period: ${startDate} to ${endDate}</p><p>Students: ${all.length} · Present marks: ${data.records.filter(r => r.status === 'P').length} · Absent marks: ${data.records.filter(r => r.status === 'A').length}</p><table border="1" cellpadding="5" cellspacing="0"><thead><tr><th>Class</th><th>Enrollment</th><th>Name</th><th>Present / Marked</th><th>Attendance</th></tr></thead><tbody>${summaryRows}</tbody></table>${omitted}<p>Full class-wise student results are attached as an Excel workbook.</p>`;
+  emailReport_(`Monthly Overall Attendance — ${startDate.slice(0, 7)}`, html, [workbook]);
+  return { startDate, endDate, students: all.length };
 }
