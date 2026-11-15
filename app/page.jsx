@@ -26,13 +26,21 @@ const markup = `
 
 export default function Home() {
   useEffect(() => {
+    const isDevelopment = process.env.NODE_ENV === "development";
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch((error) => {
-        console.error("PWA service worker registration failed:", error);
-      });
+      if (isDevelopment) {
+        // A production PWA worker can serve stale legacy.js while developing.
+        navigator.serviceWorker.getRegistrations()
+          .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+          .catch((error) => console.warn("Could not clear the development service worker:", error));
+      } else {
+        navigator.serviceWorker.register("/sw.js").catch((error) => {
+          console.error("PWA service worker registration failed:", error);
+        });
+      }
     }
     const script = document.createElement("script");
-    script.src = "/legacy.js";
+    script.src = isDevelopment ? `/legacy.js?dev=${Date.now()}` : "/legacy.js";
     script.onload = () => { if (typeof window.onload === "function") window.onload(); };
     document.body.appendChild(script);
     return () => { script.remove(); };
