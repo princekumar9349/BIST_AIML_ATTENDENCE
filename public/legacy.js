@@ -12,10 +12,8 @@
     const GROUP_NAME = 'Bansal Group of Institutes (BGI)';
     const DEVLINK_URL = 'https://devlinkhub.in';
 
-    // Your Live Google Apps Script Execution URL
-    const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec";
-    let GAS_URL = DEFAULT_GAS_URL;
-    try { GAS_URL = localStorage.getItem('bist_gas_url') || DEFAULT_GAS_URL; } catch (e) { }
+    // Set the deployed Apps Script /exec URL here manually before deploying the UI.
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec";
 
     // Cache TTL Rules (in milliseconds)
     const STUDENT_TTL_MS = 5 * 60 * 1000; // 5 minutes persistent student cache (no repeated fetching!)
@@ -249,6 +247,10 @@
       try { return 'rpc_' + fn + '_' + JSON.stringify(args || []); } catch (e) { return 'rpc_' + fn; }
     }
 
+    function rosterCacheKey(classId) {
+      return 'roster_' + classId + '_' + (S.user?.role || 'unknown').toLowerCase();
+    }
+
     function toast(msg) {
       const t = $('#toast');
       t.textContent = msg;
@@ -333,7 +335,11 @@
       'listStudents', 'getAttendanceSheet', 'getAbsentees', 'getSummary',
       'getSummaryByDateRange', 'getSettings', 'getMyAttendance'
     ];
-    const ckey = (fn, a) => fnCacheKey(fn, fn === 'publicClasses' ? [] : (a || []).slice(1));
+    const ckey = (fn, a) => {
+      const args = fn === 'publicClasses' ? [] : (a || []).slice(1);
+      if (fn === 'listStudents') args.push('role:' + (S.user?.role || 'unknown'));
+      return fnCacheKey(fn, args);
+    };
 
     async function rawPost(fn, args) {
       const res = await fetch(GAS_URL, {
@@ -450,27 +456,27 @@
       try { lastEnr = localStorage.getItem('bist_last_enr') || ''; } catch (e) { }
 
       $('#app').innerHTML = `
-    <div style="background:linear-gradient(150deg, var(--navy) 0%, var(--navy-2) 60%, var(--navy-3) 100%);min-height:100vh;padding:22px 16px;display:flex;flex-direction:column;justify-content:space-between;color:#fff">
-      <div>
-        <div style="display:flex;justify-content:center;margin-top:8px;margin-bottom:14px">
+    <div class="login-shell">
+      <div class="login-panel">
+        <div class="login-brandmark">
           ${renderLogos('lg')}
         </div>
-        <div style="text-align:center;margin-bottom:18px">
-          <div style="display:inline-block;background:rgba(197,160,89,0.2);border:1px solid var(--gold);color:var(--gold);font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:999px;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px">
+        <div class="login-heading">
+          <div class="login-badge">
             BANSAL GROUP OF INSTITUTES (BGI)
           </div>
-          <h1 style="margin:0;font-size:18px;font-weight:900;letter-spacing:-0.01em;color:#fff;line-height:1.25">
+          <h1 class="login-title">
             BANSAL INSTITUTE OF SCIENCE & TECHNOLOGY, BHOPAL
           </h1>
-          <p style="margin:5px 0 2px;font-size:13.5px;font-weight:800;color:var(--gold)">
+          <p class="login-dept">
             Department of AIML (Artificial Intelligence & Machine Learning)
           </p>
-          <p style="margin:0;font-size:12.5px;color:#cbd5e1;font-weight:700">
-            HOD: <b style="color:#fff">${HOD_NAME}</b>
+          <p class="login-hod">
+            HOD: <b>${HOD_NAME}</b>
           </p>
         </div>
 
-        <div class="card" style="color:var(--tx);padding:18px;border-radius:20px;border:2px solid var(--gold)">
+        <div class="card login-card">
           <div class="seg">
             <button class="${isStu ? 'on' : ''}" onclick="LOGIN.mode='student';vLogin()">Student Portal</button>
             <button class="${!isStu ? 'on' : ''}" onclick="LOGIN.mode='staff';vLogin()">HOD / Faculty</button>
@@ -489,6 +495,10 @@
               <label class="lbl">Enrollment Number</label>
               <input id="l-enr" class="inp" value="${esc(lastEnr)}" placeholder="e.g. 0112AL231001" autocapitalize="characters"
                      style="text-transform:uppercase;font-family:monospace"
+                     onkeydown="if(event.key==='Enter')doStudent()">
+
+              <label class="lbl" for="l-pin">6-digit Branch PIN (shared)</label>
+              <input id="l-pin" class="inp" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="current-password" placeholder="Enter your branch PIN"
                      onkeydown="if(event.key==='Enter')doStudent()">
 
               <button id="student-login-btn" class="btn gold" style="margin-top:14px" onclick="doStudent()" disabled>
@@ -512,9 +522,9 @@
         </div>
       </div>
 
-      <div style="text-align:center;margin-top:20px">
+      <div class="login-footer">
         <div style="font-size:11px;color:#cbd5e1;margin-bottom:6px">Bhopal • Indore • Mandideep</div>
-        <a href="${DEVLINK_URL}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:rgba(255,255,255,0.12);border:1px solid var(--gold);color:var(--gold);font-size:11px;font-weight:800;padding:5px 14px;border-radius:999px;letter-spacing:0.06em;text-transform:uppercase;text-decoration:none">
+        <a href="${DEVLINK_URL}" target="_blank" rel="noopener noreferrer" class="login-credit">
           Developed by Devlinkhub Team
         </a>
       </div>
@@ -598,14 +608,16 @@
     async function doStudent() {
       const cid = $('#l-class')?.value;
       const enr = $('#l-enr')?.value.trim().toUpperCase();
+      const pin = $('#l-pin')?.value.trim();
       if (!cid) return toast('Please select your Class');
       if (!enr) return toast('Please enter your Enrollment No');
+      if (!/^\d{6}$/.test(pin || '')) return toast('Please enter the 6-digit branch PIN');
       try {
         localStorage.setItem('bist_last_enr', enr);
         localStorage.setItem('bist_last_cid', cid);
       } catch (e) { }
 
-      const res = await run('studentLogin', cid, enr);
+      const res = await run('studentLogin', cid, enr, pin);
       if (res) await start(res);
     }
 
@@ -710,7 +722,7 @@
           ['students', 'Students', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>'],
           ['subjects', 'Subjects', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>'],
           ['setup', 'Setup', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'],
-          ['profile', 'Profile', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
+          ['profile', 'Settings', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
         ];
       }
       if (role === 'TEACHER') {
@@ -870,6 +882,21 @@
       vReport();
     }
 
+    function confirmDefaulterReminderSend(count) {
+      if (!count) return toast('There are no defaulters to email');
+      const currentClass = S.classes.find(c => c.id === S.classId);
+      showConfirmModal(
+        'Send attendance reminders?',
+        `Send an email to students below ${S.minPct}% attendance in ${currentClass?.label || 'this class'}? Students without a valid email address will be skipped.`,
+        'Send Emails',
+        false,
+        async () => {
+          const result = await call('sendDefaulterReminders', S.classId);
+          if (result) toast(`Reminder emails sent to ${result.sent} of ${result.defaulters} defaulters${result.missingEmail ? `; ${result.missingEmail} missing email` : ''}${result.failed ? `; ${result.failed} not sent` : ''}.`);
+        }
+      );
+    }
+
     function drawReportView(res, isSyncing, ts) {
       const v = $('#view');
       const table = res.table || [];
@@ -935,6 +962,7 @@
         <button class="btn sm ${S.onlyDefaulters ? 'red' : 'sec'}" onclick="S.onlyDefaulters=!S.onlyDefaulters;drawReportView(cacheGet('${reportCacheKey()}'),false,Date.now())">
           ${S.onlyDefaulters ? `Showing Below ${min}% Only` : `Filter Defaulters (Below ${min}%)`}
         </button>
+        ${!res.range ? `<button class="btn sm gold" onclick="confirmDefaulterReminderSend(${defaultersCount})" ${defaultersCount ? '' : 'disabled'}>Email ${defaultersCount} Defaulters</button>` : ''}
         <a class="btn sm gold" target="_blank" href="${esc(res.url || '#')}">Open Master Sheet</a>
       </div>
 
@@ -1143,6 +1171,15 @@
 
       <div id="att-summary-counters" class="row2" style="margin-top:12px"></div>
 
+      ${S.user.role === 'HOD' && !isExtra ? `
+        <label style="display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding:10px;border-radius:10px;background:#fff8e8;color:var(--navy);font-size:12px;font-weight:800">
+          <input id="auto-defaulter-reminders" type="checkbox" ${defaulterRemindersEnabled() ? 'checked' : ''} onchange="setDefaulterRemindersEnabled(this.checked)" style="margin-top:2px">
+          <span>Email a reminder to all students below ${S.minPct}% attendance after saving
+            <small style="display:block;margin-top:4px;color:var(--mu);font-weight:600">Uses the default email sender configured in Settings. Students without an email address are skipped.</small>
+          </span>
+        </label>
+      ` : ''}
+
       <div class="row2" style="margin-top:10px">
         ${isExtra ? `
           <button class="btn sm ok" onclick="setAllExtra(M.lecs)">Set All Max (${M.lecs})</button>
@@ -1295,6 +1332,7 @@
       }
       const model = M;
       if (!model) return;
+      const sendReminders = S.user.role === 'HOD' && !model.extra && Boolean($('#auto-defaulter-reminders')?.checked);
       const btn = $('#save-att-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Saving to Google Sheet…'; }
 
@@ -1302,13 +1340,29 @@
       model.rows.forEach(r => { marks[r.e] = r.s; });
       const res = await call('saveAttendance', model.s.classId, model.s.subject, model.date, model.sess, model.lecs, marks);
 
-      if (btn?.isConnected) { btn.disabled = false; btn.textContent = `Save ${model.extra ? 'Activity Attendance' : 'Lecture Attendance'}`; }
       if (res) {
         model.exists = true;
         delete MEM_CACHE['summary_' + model.s.classId];
         toast(res);
         if (M === model) drawSheet();
+        if (sendReminders) {
+          const reminders = await call('sendDefaulterReminders', model.s.classId);
+          if (reminders) {
+            const pending = reminders.missingEmail + reminders.failed;
+            toast(`Attendance saved. Reminder emails sent to ${reminders.sent} of ${reminders.defaulters} defaulters${pending ? `; ${reminders.missingEmail} missing email, ${reminders.failed} not sent` : ''}.`);
+          }
+        }
       }
+      if (btn?.isConnected) { btn.disabled = false; btn.textContent = `Save ${model.extra ? 'Activity Attendance' : 'Lecture Attendance'}`; }
+    }
+
+    function defaulterRemindersEnabled() {
+      try { return localStorage.getItem('bist_auto_defaulter_reminders') !== 'off'; }
+      catch (e) { return true; }
+    }
+
+    function setDefaulterRemindersEnabled(enabled) {
+      try { localStorage.setItem('bist_auto_defaulter_reminders', enabled ? 'on' : 'off'); } catch (e) { }
     }
 
     /* ============================================================================
@@ -1403,7 +1457,7 @@
       const v = $('#view');
       if (!S.classId) { v.innerHTML = noClassCard(); return; }
 
-      const stuKey = 'roster_' + S.classId;
+      const stuKey = rosterCacheKey(S.classId);
       const cached = cacheGet(stuKey);
       if (cached) {
         drawStudentsRoster(cached);
@@ -1422,8 +1476,20 @@
       const v = $('#view');
       const isHod = S.user.role === 'HOD';
       const curCls = S.classes.find(c => c.id === S.classId);
+      window._studentRosterContacts = list;
 
       v.innerHTML = `
+    ${isHod ? `
+      <div class="card">
+        <h3>Shared Branch Login PIN</h3>
+        <p class="hint">Set one 6-digit PIN for every student in the <b>${esc(curCls?.branch || '')}</b> branch. The same PIN works across its semesters and sections.</p>
+        <div class="row2">
+          <input id="branch-student-pin" class="inp" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="new-password" placeholder="New branch PIN">
+          <button class="btn gold" onclick="saveBranchStudentPin()">Save Branch PIN</button>
+        </div>
+      </div>
+    ` : ''}
+
     <div class="card">
       <h3>Add Student to Class</h3>
       <p class="hint">${esc(curCls?.label || '')}</p>
@@ -1438,12 +1504,22 @@
           <input id="st-name" class="inp" placeholder="Full Name">
         </div>
       </div>
+      <div class="row2" style="margin-top:8px">
+        <div>
+          <label class="lbl">Email (Optional)</label>
+          <input id="st-email" class="inp" type="email" placeholder="student@example.com" autocomplete="email">
+        </div>
+        <div>
+          <label class="lbl">Phone (Optional)</label>
+          <input id="st-phone" class="inp" type="tel" placeholder="+91 98765 43210" autocomplete="tel">
+        </div>
+      </div>
       <button class="btn" style="margin-top:12px" onclick="addSingleStudent()">+ Add Student</button>
 
       <details style="margin-top:12px;border-top:1px solid var(--ln);padding-top:10px">
         <summary style="font-weight:800;color:var(--navy);cursor:pointer;font-size:13px">Bulk Paste Students (Excel / CSV List)</summary>
-        <p class="hint" style="margin-top:6px">One student per line: <code>EnrollmentNo, Full Name</code></p>
-        <textarea id="st-bulk" class="inp" placeholder="0112AL231001, Aarav Sharma&#10;0112AL231002, Priya Patel"></textarea>
+        <p class="hint" style="margin-top:6px">One student per line: <code>EnrollmentNo, Full Name, Email (optional), Phone (optional)</code></p>
+        <textarea id="st-bulk" class="inp" placeholder="0112AL231001, Aarav Sharma, aarav@example.com, +91 98765 43210&#10;0112AL231002, Priya Patel"></textarea>
         <button class="btn gold" style="margin-top:8px" onclick="addBulkStudents()">Import All Students</button>
       </details>
     </div>
@@ -1455,13 +1531,14 @@
       <input id="st-q" class="inp" placeholder="Search name or enrollment…" oninput="filterStudentList()" style="margin:8px 0">
 
       <div id="st-list-box">
-        ${list.length ? list.map(s => `
-          <div class="list-item st-item" data-q="${esc((s.e + ' ' + s.n).toLowerCase())}">
+        ${list.length ? list.map((s, index) => `
+          <div class="list-item st-item" data-q="${esc((s.e + ' ' + s.n + ' ' + (s.email || '') + ' ' + (s.phone || '')).toLowerCase())}">
             <div class="info">
               <b>${esc(s.n)}</b>
               <small>${esc(s.e)}</small>
+              ${(s.email || s.phone) ? `<small>${[s.email, s.phone].filter(Boolean).map(esc).join(' · ')}</small>` : ''}
             </div>
-            ${isHod ? `<button class="btn sm red" onclick="confirmRemoveStudent('${esc(s.e)}', '${esc(s.n)}')">Remove</button>` : ''}
+            ${isHod ? `<div style="display:flex;gap:6px"><button class="btn sm sec" onclick="editStudentContact(${index})">Contact</button><button class="btn sm red" onclick="confirmRemoveStudent('${esc(s.e)}', '${esc(s.n)}')">Remove</button></div>` : ''}
           </div>
         `).join('') : `<div class="empty">No students enrolled in this class yet.</div>`}
       </div>
@@ -1477,13 +1554,55 @@
       });
     }
 
+    async function saveBranchStudentPin() {
+      const pin = $('#branch-student-pin')?.value.trim();
+      if (!/^\d{6}$/.test(pin || '')) return toast('Branch PIN must be exactly 6 digits');
+      const result = await call('setBranchStudentPin', S.classId, pin);
+      if (result) {
+        $('#branch-student-pin').value = '';
+        toast(result);
+      }
+    }
+
+    function editStudentContact(index) {
+      const student = (window._studentRosterContacts || [])[index];
+      if (!student) return;
+      const modal = $('#modal-content');
+      modal.innerHTML = `
+        <h4>Update Student Contact</h4>
+        <p class="hint">${esc(student.n)} (${esc(student.e)})</p>
+        <label class="lbl" for="contact-email">Email (Optional)</label>
+        <input id="contact-email" class="inp" type="email" value="${esc(student.email || '')}" placeholder="student@example.com">
+        <label class="lbl" for="contact-phone">Phone (Optional)</label>
+        <input id="contact-phone" class="inp" type="tel" value="${esc(student.phone || '')}" placeholder="+91 98765 43210">
+        <div class="row2" style="margin-top:14px">
+          <button class="btn sec" onclick="closeModal()">Cancel</button>
+          <button class="btn gold" id="contact-save-btn">Save Contact</button>
+        </div>
+      `;
+      $('#modal-backdrop').classList.add('open');
+      $('#contact-save-btn').onclick = async () => {
+        const email = $('#contact-email').value.trim();
+        const phone = $('#contact-phone').value.trim();
+        const result = await call('updateStudentContact', S.classId, student.e, email, phone);
+        if (result) {
+          closeModal();
+          delete MEM_CACHE[rosterCacheKey(S.classId)];
+          toast(result);
+          vStudents();
+        }
+      };
+    }
+
     async function addSingleStudent() {
       const e = $('#st-enr')?.value.trim();
       const n = $('#st-name')?.value.trim();
+      const email = $('#st-email')?.value.trim() || '';
+      const phone = $('#st-phone')?.value.trim() || '';
       if (!e || !n) return toast('Enter both Enrollment No and Student Name');
-      const r = await call('addStudents', S.classId, `${e}, ${n}`);
+      const r = await call('addStudents', S.classId, `${e}\t${n}\t${email}\t${phone}`);
       if (r) {
-        delete MEM_CACHE['roster_' + S.classId];
+        delete MEM_CACHE[rosterCacheKey(S.classId)];
         toast(r.added ? 'Student added' : 'Already exists or invalid');
         vStudents();
       }
@@ -1494,7 +1613,7 @@
       if (!txt) return toast('Paste student lines first');
       const r = await call('addStudents', S.classId, txt);
       if (r) {
-        delete MEM_CACHE['roster_' + S.classId];
+        delete MEM_CACHE[rosterCacheKey(S.classId)];
         toast(`${r.added} added` + (r.skipped ? `, ${r.skipped} skipped` : ''));
         vStudents();
       }
@@ -1509,7 +1628,7 @@
         async () => {
           const r = await call('removeStudent', S.classId, enr);
           if (r) {
-            delete MEM_CACHE['roster_' + S.classId];
+            delete MEM_CACHE[rosterCacheKey(S.classId)];
             toast(r);
             vStudents();
           }
@@ -1693,7 +1812,7 @@
         </div>
         <div>
           <label class="lbl">Initial Password</label>
-          <input id="t-pass" class="inp" placeholder="min 4 chars">
+          <input id="t-pass" class="inp" type="password" autocomplete="new-password" placeholder="min 8 characters">
         </div>
       </div>
       <button class="btn" style="margin-top:12px" onclick="addNewTeacher()">+ Create Faculty Account</button>
@@ -1723,35 +1842,6 @@
       if (!email) return toast('Enter the report recipient email');
       const result = await call('setEmailReportSettings', email, $('#report-daily').checked, $('#report-weekly').checked, $('#report-monthly').checked, $('#report-hour').value, $('#report-sender').value);
       if (result) toast(result.enabled ? 'Report settings saved for ' + result.email : 'Settings saved; all automatic reports are paused');
-    }
-
-    function validAppsScriptUrl(value) {
-      try {
-        const url = new URL(value);
-        return url.protocol === 'https:' && url.hostname === 'script.google.com' && /^\/macros\/s\/[^/]+\/exec\/?$/.test(url.pathname);
-      } catch (e) { return false; }
-    }
-
-    function saveAppsScriptUrl() {
-      const value = $('#appscript-url')?.value.trim();
-      if (!validAppsScriptUrl(value)) return toast('Enter a valid Apps Script Web App URL ending in /exec');
-      try { localStorage.setItem('bist_gas_url', value); } catch (e) { return toast('Could not save the connection in this browser'); }
-      GAS_URL = value;
-      toast('Apps Script URL saved; reconnecting…');
-      setTimeout(() => location.reload(), 700);
-    }
-
-    async function testAppsScriptConnection() {
-      const value = $('#appscript-url')?.value.trim();
-      if (!validAppsScriptUrl(value)) return toast('Enter a valid Apps Script Web App URL ending in /exec');
-      const previous = GAS_URL;
-      GAS_URL = value;
-      try {
-        await rawPost('publicClasses', []);
-        toast('Apps Script connection successful');
-      } catch (error) {
-        toast('Apps Script connection failed: ' + (error.message || String(error)));
-      } finally { GAS_URL = previous; }
     }
 
     async function sendTestAttendanceEmail() {
@@ -1838,7 +1928,7 @@
     function promptResetTeacherPw(username) {
       showPromptModal(
         `Reset Password (@${username})`,
-        'Enter a new password (minimum 4 characters):',
+        'Enter a new password (minimum 8 characters):',
         'New password',
         '',
         async newPass => {
@@ -2069,7 +2159,7 @@
       const u = S.user;
       const isStaff = u.role === 'HOD' || u.role === 'TEACHER';
       const emailReportSettings = u.role === 'HOD'
-        ? await call('getEmailReportSettings') || { email: '', senderEmail: '', senderAliases: [], daily: true, weekly: true, monthly: true, hour: 18 }
+        ? await call('getEmailReportSettings') || { email: '', defaultEmail: '', senderEmail: '', senderAliases: [], daily: true, weekly: true, monthly: true, hour: 18 }
         : null;
 
       $('#view').innerHTML = `
@@ -2089,7 +2179,7 @@
             : `Student (${esc(u.username)}) • ${esc(u.label)}`}
       </p>
 
-      <div style="background:rgba(255,255,255,0.08);border:1px solid rgba(197,160,89,0.35);border-radius:12px;padding:10px;text-align:left;font-size:12px;line-height:1.6">
+      <div class="profile-institute" style="background:rgba(255,255,255,0.08);border:1px solid rgba(197,160,89,0.35);border-radius:12px;padding:10px;text-align:left;font-size:12px;line-height:1.6">
         <div><b>Institute:</b> ${COLLEGE_NAME}</div>
         <div><b>Department:</b> Artificial Intelligence & Machine Learning (AIML)</div>
         <div><b>HOD:</b> ${HOD_NAME}</div>
@@ -2099,21 +2189,12 @@
 
     ${u.role === 'HOD' ? `
       <div class="card">
-        <h3>Apps Script Connection</h3>
-        <p class="hint">Paste the deployed Google Apps Script Web App URL ending in <b>/exec</b>.</p>
-        <label class="lbl" for="appscript-url">Web App URL</label>
-        <input id="appscript-url" class="inp" type="url" value="${esc(GAS_URL)}" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="url">
-        <div class="row2" style="margin-top:10px">
-          <button class="btn gold" onclick="saveAppsScriptUrl()">Save Connection</button>
-          <button class="btn sec" onclick="testAppsScriptConnection()">Test Connection</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Automatic Attendance Emails</h3>
+        <h3>Email Configuration &amp; Automatic Attendance Reports</h3>
         <p class="hint">Choose the reports and sending time. Weekly and monthly reports include an Excel workbook.</p>
+        <p class="hint">Defaulter reminders and reports use the Gmail account authorized in Apps Script. No SMTP password is needed; select a pre-configured Gmail sender alias below if you want a different sender.</p>
         <label class="lbl" for="report-email">Report recipient email</label>
-        <input id="report-email" class="inp" type="email" value="${esc(emailReportSettings.email)}" placeholder="hod@example.com" autocomplete="email">
+        <input id="report-email" class="inp" type="email" value="${esc(emailReportSettings.email || emailReportSettings.defaultEmail || '')}" placeholder="hod@example.com" autocomplete="email">
+        <p class="hint">The Apps Script account email is filled in automatically when available. Edit it if reports should go to another address, then save.</p>
         <label class="lbl" for="report-sender">Sender ID (Apps Script Gmail)</label>
         <select id="report-sender" class="inp">
           <option value="" ${!emailReportSettings.senderEmail ? 'selected' : ''}>Default Apps Script account</option>
@@ -2141,7 +2222,7 @@
         <p class="hint">Update login password for @${esc(u.username)}</p>
         <label class="lbl">Current Password</label>
         <input id="pw-old" type="password" class="inp" placeholder="Enter current password">
-        <label class="lbl">New Password (min 4 characters)</label>
+        <label class="lbl">New Password (min 8 characters)</label>
         <input id="pw-new" type="password" class="inp" placeholder="Enter new password">
         <button class="btn gold" style="margin-top:12px" onclick="updateMyPassword()">Update Password</button>
       </div>

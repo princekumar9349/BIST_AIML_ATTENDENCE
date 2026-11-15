@@ -1176,4 +1176,237 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
     }
+
+    /* Minimalist UI refresh: quiet surfaces, restrained brand color, clear hierarchy. */
+    :root {
+      --navy: #202938;
+      --navy-2: #283447;
+      --navy-3: #35445a;
+      --gold: #b28a45;
+      --gold-light: #f7f2e8;
+      --gold-dark: #80622f;
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --tx: #1b2029;
+      --mu: #727b89;
+      --ln: #e6e9ee;
+      --radius: 13px;
+      --shadow: 0 1px 2px rgba(20, 29, 43, 0.035);
+    }
+
+    body {
+      background: #f6f7f9;
+      color: var(--tx);
+    }
+
+    .app-shell {
+      width: 100%;
+      max-width: 1180px;
+      background: var(--bg);
+      box-shadow: none;
+    }
+
+    header.top-bar {
+      color: var(--tx);
+      background: rgba(255, 255, 255, 0.96);
+      border-bottom: 1px solid var(--ln);
+      box-shadow: none;
+    }
+
+    .logo-pill {
+      border-color: var(--ln);
+      box-shadow: none;
+    }
+
+    .user-meta h2 { color: var(--tx); }
+    .user-meta p { color: var(--mu); }
+
+    .icon-btn {
+      color: var(--tx);
+      background: #fff;
+      border-color: var(--ln);
+    }
+
+    .class-bar {
+      background: rgba(246, 247, 249, 0.96);
+      border-bottom-color: var(--ln);
+    }
+
+    .class-bar select {
+      color: var(--tx);
+      border-color: var(--ln);
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    main#view {
+      max-width: 1080px;
+      width: 100%;
+      margin-inline: auto;
+      padding: 22px 28px calc(108px + env(safe-area-inset-bottom));
+    }
+
+    .card {
+      border-color: var(--ln);
+      border-radius: 13px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h3 { color: var(--tx); }
+
+    .card-navy {
+      color: var(--tx);
+      background: #fff;
+      border: 1px solid var(--ln);
+    }
+
+    .card-navy h3 { color: var(--tx) !important; }
+    .card-navy > p { color: var(--mu) !important; }
+    .card-navy .profile-institute { background: #f7f8fa !important; border-color: var(--ln) !important; }
+
+    label.lbl {
+      color: #687282;
+      font-size: 10.5px;
+      letter-spacing: 0.045em;
+    }
+
+    input.inp, select.inp, textarea.inp {
+      border-color: #dfe3e9;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: none;
+    }
+
+    input.inp:focus, select.inp:focus, textarea.inp:focus {
+      border-color: #7b8ba5;
+      box-shadow: 0 0 0 3px rgba(93, 115, 148, 0.11);
+    }
+
+    .btn {
+      color: #fff;
+      background: #263247;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    .btn.gold {
+      color: #fff;
+      background: #263247;
+      box-shadow: none;
+    }
+
+    .btn.sec { color: #354052; background: #eef0f3; }
+    .btn.outline { color: #354052; border-color: var(--ln); }
+    .btn:hover { box-shadow: 0 2px 7px rgba(20, 29, 43, 0.09); }
+
+    .seg {
+      background: #f0f2f5;
+      border-radius: 10px;
+    }
+
+    .seg button { border-radius: 8px; }
+    .seg button.on { color: var(--tx); box-shadow: 0 1px 3px rgba(20, 29, 43, 0.08); }
+
+    .chip { border-color: var(--ln); }
+    .chip.on { color: #fff; background: #263247; border-color: #263247; }
+
+    .list-item {
+      background: #fff;
+      border-color: var(--ln);
+      border-radius: 10px;
+    }
+
+    .table-wrap { border-color: var(--ln); border-radius: 12px; box-shadow: none; }
+    .master-tbl th { background: #29364a; }
+
+    nav.bot-nav {
+      width: min(940px, calc(100% - 28px));
+      max-width: 940px;
+      border: 1px solid var(--ln);
+      border-radius: 15px;
+      padding: 5px 7px calc(5px + env(safe-area-inset-bottom));
+      background: rgba(255, 255, 255, 0.97);
+      box-shadow: 0 4px 18px rgba(20, 29, 43, 0.08);
+    }
+
+    nav.bot-nav button { color: #727b89; border-radius: 10px; }
+    nav.bot-nav button.on { color: #202938; background: #f1f3f6; }
+    nav.bot-nav button.on svg { color: #202938; }
+
+    #toast {
+      color: #fff;
+      background: #263247;
+      border: 1px solid #263247;
+      box-shadow: 0 4px 18px rgba(20, 29, 43, 0.16);
+    }
+
+    #modal-backdrop { background: rgba(25, 32, 43, 0.4); }
+    .modal-card { border: 1px solid var(--ln); border-radius: 14px; box-shadow: 0 14px 40px rgba(20, 29, 43, 0.14); }
+    .modal-card h4 { color: var(--tx); }
+
+    .login-shell {
+      min-height: 100svh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 28px;
+      padding: 28px 18px 20px;
+      color: var(--tx);
+      background: #f6f7f9;
+    }
+
+    .login-panel { width: min(100%, 440px); }
+    .login-brandmark { display: flex; justify-content: center; margin: 0 0 18px; }
+    .login-heading { text-align: center; margin-bottom: 22px; }
+    .login-badge {
+      display: inline-block;
+      margin-bottom: 9px;
+      color: #687282;
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .login-title {
+      margin: 0;
+      color: #202938;
+      font-size: clamp(17px, 4vw, 21px);
+      font-weight: 760;
+      letter-spacing: -0.035em;
+      line-height: 1.35;
+    }
+    .login-dept { margin: 7px 0 2px; color: #596578; font-size: 13px; font-weight: 600; }
+    .login-hod { margin: 0; color: var(--mu); font-size: 12px; }
+    .login-hod b { color: var(--tx); }
+    .login-card { padding: 20px; border-radius: 14px; }
+    .login-footer { color: var(--mu); font-size: 11px; text-align: center; }
+    .login-footer > div { margin-bottom: 8px; color: var(--mu) !important; font-size: 11px !important; }
+    .login-credit {
+      display: inline-block;
+      padding: 5px 12px;
+      color: #5f6876;
+      border: 1px solid var(--ln);
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.035em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    @media (min-width: 760px) {
+      main#view { padding: 26px 38px 116px; }
+      .class-bar { padding-inline: max(38px, calc((100% - 1080px) / 2)); }
+      nav.bot-nav { bottom: 14px; }
+    }
+
+    @media (max-width: 520px) {
+      main#view { padding: 16px 14px calc(100px + env(safe-area-inset-bottom)); }
+      .class-bar { padding-inline: 14px; }
+      .card { padding: 15px; }
+      .login-shell { justify-content: flex-start; padding-top: 22px; gap: 24px; }
+      .login-brandmark { margin-bottom: 15px; }
+    }
   
