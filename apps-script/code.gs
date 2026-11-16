@@ -961,15 +961,22 @@ function sendDefaulterReminders(token, classId) {
   if (!eligible.length) return { sent: 0, missingEmail: 0, failed: 0, defaulters: 0, minimum: summary.min, reason: 'No students are below the attendance threshold.' };
   if (!withEmail.length) return { sent: 0, missingEmail: eligible.length, failed: 0, defaulters: eligible.length, minimum: summary.min, reason: 'Add valid student email addresses in the Students tab.' };
 
-  let remaining = 0;
-  try { remaining = GmailApp.getRemainingDailyQuota(); }
-  catch (e) { throw new Error('Email permission is not ready. Run authorizeEmailReportAutomation in Apps Script, authorize Gmail, and deploy a new version.'); }
+  // The test-email path proves GmailApp.sendEmail is authorized. A quota-read
+  // failure must not block that send attempt; report the sendEmail error instead.
+  let remaining = withEmail.length;
+  let quotaKnown = false;
+  try {
+    remaining = MailApp.getRemainingDailyQuota();
+    quotaKnown = true;
+  } catch (e) {
+    Logger.log('Mail quota lookup failed; attempting reminder sends directly: ' + String(e.message || e));
+  }
   const settings = emailReportSettings_();
   const options = { name: 'BIST AIML Attendance' };
   if (settings.senderEmail) options.from = settings.senderEmail;
 
   let sent = 0, failed = 0, firstError = '';
-  withEmail.slice(0, remaining).forEach(student => {
+  withEmail.slice(0, quotaKnown ? remaining : withEmail.length).forEach(student => {
     const subject = 'Please maintain your attendance - below ' + summary.min + '%';
     const body = `Dear ${student.name},\n\nYour current overall attendance is ${student.percentage}%, below the department minimum of ${summary.min}%. Please maintain the required attendance by attending upcoming classes regularly. Contact your faculty or HOD if you need support.\n\nEnrollment No: ${student.enrollment}\nDepartment of AIML\nBIST Bhopal`;
     try { GmailApp.sendEmail(student.email, subject, body, options); sent++; }
@@ -978,10 +985,10 @@ function sendDefaulterReminders(token, classId) {
   return {
     sent,
     missingEmail: eligible.length - withEmail.length,
-    failed: failed + Math.max(0, withEmail.length - remaining),
+    failed: failed + (quotaKnown ? Math.max(0, withEmail.length - remaining) : 0),
     defaulters: eligible.length,
     minimum: summary.min,
-    reason: remaining < withEmail.length ? 'Some messages were not sent because the Apps Script Gmail daily quota was reached.' : '',
+    reason: quotaKnown && remaining < withEmail.length ? 'Some messages were not sent because the Apps Script Gmail daily quota was reached.' : '',
     error: firstError
   };
 }

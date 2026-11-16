@@ -1,50 +1,50 @@
 
-    /* ============================================================================
-     * BIST BHOPAL & BGI - AIML DEPARTMENT ATTENDANCE SYSTEM (v4.5 TURBO FRONTEND)
-     * HOD: Dr. Rashmi Singh  |  Developed by Devlinkhub Team (https://devlinkhub.in)
-     * Optimizations: Skeleton Shimmer UI + Persistent Student Cache + Deduplication
-     * ============================================================================ */
+/* ============================================================================
+ * BIST BHOPAL & BGI - AIML DEPARTMENT ATTENDANCE SYSTEM (v4.5 TURBO FRONTEND)
+ * HOD: Dr. Rashmi Singh  |  Developed by Devlinkhub Team (https://devlinkhub.in)
+ * Optimizations: Skeleton Shimmer UI + Persistent Student Cache + Deduplication
+ * ============================================================================ */
 
-    const $ = s => document.querySelector(s);
-    const DEPT_NAME = 'Department of AIML';
-    const HOD_NAME = 'Dr. Rashmi Singh';
-    const COLLEGE_NAME = 'Bansal Institute of Science & Technology (BIST), Bhopal';
-    const GROUP_NAME = 'Bansal Group of Institutes (BGI)';
-    const DEVLINK_URL = 'https://devlinkhub.in';
+const $ = s => document.querySelector(s);
+const DEPT_NAME = 'Department of AIML';
+const HOD_NAME = 'Dr. Rashmi Singh';
+const COLLEGE_NAME = 'Bansal Institute of Science & Technology (BIST), Bhopal';
+const GROUP_NAME = 'Bansal Group of Institutes (BGI)';
+const DEVLINK_URL = 'https://devlinkhub.in';
 
-    // Set the deployed Apps Script /exec URL here manually before deploying the UI.
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec";
+// Set the deployed Apps Script /exec URL here manually before deploying the UI.
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwT9asJ6RPWtF8ARJ-CdRyD1U8PPKSQ_Ndshr_ivBjVJT6x8xjLfZXLcZV-FtFK_7F7/exec";
 
-    // Cache TTL Rules (in milliseconds)
-    const STUDENT_TTL_MS = 5 * 60 * 1000; // 5 minutes persistent student cache (no repeated fetching!)
-    const STAFF_TTL_MS = 45 * 1000;       // 45 seconds fast in-memory cache for staff
+// Cache TTL Rules (in milliseconds)
+const STUDENT_TTL_MS = 5 * 60 * 1000; // 5 minutes persistent student cache (no repeated fetching!)
+const STAFF_TTL_MS = 45 * 1000;       // 45 seconds fast in-memory cache for staff
 
-    const S = {
-      token: null,
-      user: null,
-      classId: '',
-      classes: [],
-      subjects: [],
-      teachers: [],
-      minPct: 75,
-      tab: '',
-      onlyDefaulters: false,
-      absDate: '',
-      reportFrom: '',
-      reportTo: ''
-    };
+const S = {
+  token: null,
+  user: null,
+  classId: '',
+  classes: [],
+  subjects: [],
+  teachers: [],
+  minPct: 75,
+  tab: '',
+  onlyDefaulters: false,
+  absDate: '',
+  reportFrom: '',
+  reportTo: ''
+};
 
-    let M = null;
-    let LOGIN = { mode: 'student', branch: '', sem: '', classId: '' };
-    let PUBLIC_CLASSES = [];
-    let busyCount = 0;
+let M = null;
+let LOGIN = { mode: 'student', branch: '', sem: '', classId: '' };
+let PUBLIC_CLASSES = [];
+let busyCount = 0;
 
-    // Fast In-Memory Cache & Pending Request Deduplicator
-    const MEM_CACHE = {};
-    const IN_FLIGHT = {};
+// Fast In-Memory Cache & Pending Request Deduplicator
+const MEM_CACHE = {};
+const IN_FLIGHT = {};
 
-    /* ---------------- High-Precision Inline SVG Crests + Image Logos ---------------- */
-    const SVG_BIST_FALLBACK = `<svg viewBox="0 0 120 120" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
+/* ---------------- High-Precision Inline SVG Crests + Image Logos ---------------- */
+const SVG_BIST_FALLBACK = `<svg viewBox="0 0 120 120" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
   <circle cx="60" cy="60" r="56" fill="#991b1b" stroke="#7f1d1d" stroke-width="2.5"/>
   <circle cx="60" cy="60" r="42" fill="#ffffff" stroke="#1e293b" stroke-width="2"/>
   <circle cx="60" cy="60" r="35" fill="#ffffff" stroke="#991b1b" stroke-width="4" stroke-dasharray="5 3.5"/>
@@ -56,7 +56,7 @@
   <text x="60" y="106" text-anchor="middle" fill="#ffffff" font-size="8" font-weight="900" font-family="sans-serif" letter-spacing="0.6">BIST, BHOPAL</text>
 </svg>`;
 
-    const SVG_BGI_FALLBACK = `<svg viewBox="0 0 175 96" width="68" height="38" xmlns="http://www.w3.org/2000/svg">
+const SVG_BGI_FALLBACK = `<svg viewBox="0 0 175 96" width="68" height="38" xmlns="http://www.w3.org/2000/svg">
   <path d="M10 10 L44 3 L78 10 L78 48 C78 72 44 90 44 90 C44 90 10 72 10 48 Z" fill="#ffffff" stroke="#0a192f" stroke-width="4.5"/>
   <path d="M15 14 L44 8 L73 14 L73 47 C73 67 44 83 44 83 C44 83 15 67 15 47 Z" fill="none" stroke="#c5a059" stroke-width="2.2"/>
   <text x="44" y="50" text-anchor="middle" fill="#0a192f" font-size="24" font-weight="900" stroke="#c5a059" stroke-width="0.8" font-family="sans-serif">BGI</text>
@@ -67,9 +67,9 @@
   <text x="128" y="66" text-anchor="middle" fill="#ffffff" font-size="6.5" font-weight="800" font-family="sans-serif">BHOPAL | INDORE | MANDIDEEP</text>
 </svg>`;
 
-    function renderLogos(size = 'md') {
-      const h = size === 'lg' ? '52px' : size === 'sm' ? '26px' : '34px';
-      return `
+function renderLogos(size = 'md') {
+  const h = size === 'lg' ? '52px' : size === 'sm' ? '26px' : '34px';
+  return `
     <div class="logo-pill" style="padding:${size === 'lg' ? '6px 12px' : '3px 7px'}">
       <img src="bistimages.jpg" alt="BIST Bhopal" style="height:${h};width:auto;border-radius:6px"
            onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
@@ -80,10 +80,10 @@
       <span style="display:none;line-height:0">${SVG_BGI_FALLBACK}</span>
     </div>
   `;
-    }
+}
 
-    function devFooterHTML() {
-      return `
+function devFooterHTML() {
+  return `
     <footer class="dev-footer">
       <div class="logos">${renderLogos('sm')}</div>
       <div style="font-size:11.5px;font-weight:900;color:var(--navy);margin-bottom:2px">BANSAL INSTITUTE OF SCIENCE & TECHNOLOGY, BHOPAL</div>
@@ -92,11 +92,11 @@
       <a href="${DEVLINK_URL}" target="_blank" rel="noopener noreferrer" class="dev-credit">Developed by Devlinkhub Team</a>
     </footer>
   `;
-    }
+}
 
-    /* ---------------- SKELETON SHIMMER TEMPLATES ---------------- */
-    function skStudent() {
-      return `
+/* ---------------- SKELETON SHIMMER TEMPLATES ---------------- */
+function skStudent() {
+  return `
         <div class="card" style="text-align:center;padding:20px 15px">
           <div class="sk sk-circle" style="width:130px;height:130px;margin:0 auto 14px"></div>
           <div class="sk" style="height:18px;width:55%;margin:0 auto 8px"></div>
@@ -118,10 +118,10 @@
           </div>
         `).join('')}
       `;
-    }
+}
 
-    function skReport() {
-      return `
+function skReport() {
+  return `
         <div class="row3" style="margin-bottom:12px">
           ${[1, 2, 3].map(() => `
             <div class="card" style="margin:0;padding:14px 10px;text-align:center">
@@ -141,10 +141,10 @@
           `).join('')}
         </div>
       `;
-    }
+}
 
-    function skList(rows = 5) {
-      return `
+function skList(rows = 5) {
+  return `
         <div class="card">
           <div class="sk" style="height:18px;width:52%;margin-bottom:8px"></div>
           <div class="sk" style="height:12px;width:75%;margin-bottom:16px"></div>
@@ -159,126 +159,126 @@
           `).join('')}
         </div>
       `;
+}
+
+/* ---------------- Utilities & Persistent LocalStorage Cache ---------------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+function timeAgo(ts) {
+  if (!ts) return 'Just now';
+  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (sec < 30) return 'Just now';
+  if (sec < 60) return sec + 's ago';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm ago';
+  const hr = Math.floor(min / 60);
+  return hr + 'h ago';
+}
+
+function isGasEnv() {
+  return (typeof google !== 'undefined' && google.script && google.script.run) || Boolean(typeof GAS_URL !== 'undefined' && GAS_URL && !GAS_URL.includes('YOUR_SCRIPT_ID_HERE'));
+}
+
+function updateNetStatus() {
+  const b = $('#net-banner');
+  const txt = $('#net-banner-text');
+  if (!b || !txt) return;
+  if (!navigator.onLine) {
+    b.className = 'offline';
+    txt.textContent = 'Offline / Low Network Mode — Viewing saved data from phone memory!';
+  } else if (!isGasEnv()) {
+    b.className = 'gas-ready';
+    txt.textContent = 'Ready for Google Apps Script connection.';
+  } else {
+    b.className = '';
+  }
+}
+window.addEventListener('online', updateNetStatus);
+window.addEventListener('offline', updateNetStatus);
+
+function cacheSet(key, val) {
+  const entry = { ts: Date.now(), data: val };
+  MEM_CACHE[key] = entry;
+  try { localStorage.setItem('bist_v4_' + key, JSON.stringify(entry)); } catch (e) { }
+}
+
+function cacheGetEntry(key) {
+  if (MEM_CACHE[key]) return MEM_CACHE[key];
+  try {
+    const raw = localStorage.getItem('bist_v4_' + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    MEM_CACHE[key] = parsed;
+    return parsed;
+  } catch (e) { return null; }
+}
+
+function cacheGet(key) {
+  const entry = cacheGetEntry(key);
+  return entry ? entry.data : null;
+}
+
+function isCacheFresh(key, ttlMs) {
+  const entry = cacheGetEntry(key);
+  if (!entry || !entry.ts) return false;
+  return (Date.now() - entry.ts) < ttlMs;
+}
+
+function clearWriteCaches() {
+  const keys = new Set(Object.keys(MEM_CACHE));
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('bist_v4_')) keys.add(key.slice('bist_v4_'.length));
     }
+  } catch (e) { }
+  keys.forEach(k => {
+    if (k === 'public_classes') return;
+    delete MEM_CACHE[k];
+    try { localStorage.removeItem('bist_v4_' + k); } catch (e) { }
+  });
+}
 
-    /* ---------------- Utilities & Persistent LocalStorage Cache ---------------- */
-    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const today = () => {
-      const d = new Date();
-      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    };
+function fnCacheKey(fn, args) {
+  try { return 'rpc_' + fn + '_' + JSON.stringify(args || []); } catch (e) { return 'rpc_' + fn; }
+}
 
-    function timeAgo(ts) {
-      if (!ts) return 'Just now';
-      const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-      if (sec < 30) return 'Just now';
-      if (sec < 60) return sec + 's ago';
-      const min = Math.floor(sec / 60);
-      if (min < 60) return min + 'm ago';
-      const hr = Math.floor(min / 60);
-      return hr + 'h ago';
-    }
+function rosterCacheKey(classId) {
+  return 'roster_' + classId + '_' + (S.user?.role || 'unknown').toLowerCase();
+}
 
-    function isGasEnv() {
-      return (typeof google !== 'undefined' && google.script && google.script.run) || Boolean(typeof GAS_URL !== 'undefined' && GAS_URL && !GAS_URL.includes('YOUR_SCRIPT_ID_HERE'));
-    }
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
 
-    function updateNetStatus() {
-      const b = $('#net-banner');
-      const txt = $('#net-banner-text');
-      if (!b || !txt) return;
-      if (!navigator.onLine) {
-        b.className = 'offline';
-        txt.textContent = 'Offline / Low Network Mode — Viewing saved data from phone memory!';
-      } else if (!isGasEnv()) {
-        b.className = 'gas-ready';
-        txt.textContent = 'Ready for Google Apps Script connection.';
-      } else {
-        b.className = '';
-      }
-    }
-    window.addEventListener('online', updateNetStatus);
-    window.addEventListener('offline', updateNetStatus);
+function busy(delta) {
+  busyCount += delta;
+  const bar = $('#loader');
+  if (busyCount > 0) {
+    bar.style.width = '84%';
+  } else {
+    busyCount = 0;
+    bar.style.width = '100%';
+    setTimeout(() => { if (busyCount === 0) bar.style.width = '0%'; }, 240);
+  }
+}
 
-    function cacheSet(key, val) {
-      const entry = { ts: Date.now(), data: val };
-      MEM_CACHE[key] = entry;
-      try { localStorage.setItem('bist_v4_' + key, JSON.stringify(entry)); } catch (e) { }
-    }
+/* Custom Non-Blocking Modals */
+function closeModal() {
+  $('#modal-backdrop').classList.remove('open');
+}
 
-    function cacheGetEntry(key) {
-      if (MEM_CACHE[key]) return MEM_CACHE[key];
-      try {
-        const raw = localStorage.getItem('bist_v4_' + key);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        MEM_CACHE[key] = parsed;
-        return parsed;
-      } catch (e) { return null; }
-    }
-
-    function cacheGet(key) {
-      const entry = cacheGetEntry(key);
-      return entry ? entry.data : null;
-    }
-
-    function isCacheFresh(key, ttlMs) {
-      const entry = cacheGetEntry(key);
-      if (!entry || !entry.ts) return false;
-      return (Date.now() - entry.ts) < ttlMs;
-    }
-
-    function clearWriteCaches() {
-      const keys = new Set(Object.keys(MEM_CACHE));
-      try {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('bist_v4_')) keys.add(key.slice('bist_v4_'.length));
-        }
-      } catch (e) { }
-      keys.forEach(k => {
-        if (k === 'public_classes') return;
-        delete MEM_CACHE[k];
-        try { localStorage.removeItem('bist_v4_' + k); } catch (e) { }
-      });
-    }
-
-    function fnCacheKey(fn, args) {
-      try { return 'rpc_' + fn + '_' + JSON.stringify(args || []); } catch (e) { return 'rpc_' + fn; }
-    }
-
-    function rosterCacheKey(classId) {
-      return 'roster_' + classId + '_' + (S.user?.role || 'unknown').toLowerCase();
-    }
-
-    function toast(msg) {
-      const t = $('#toast');
-      t.textContent = msg;
-      t.classList.add('show');
-      clearTimeout(toast.timer);
-      toast.timer = setTimeout(() => t.classList.remove('show'), 3000);
-    }
-
-    function busy(delta) {
-      busyCount += delta;
-      const bar = $('#loader');
-      if (busyCount > 0) {
-        bar.style.width = '84%';
-      } else {
-        busyCount = 0;
-        bar.style.width = '100%';
-        setTimeout(() => { if (busyCount === 0) bar.style.width = '0%'; }, 240);
-      }
-    }
-
-    /* Custom Non-Blocking Modals */
-    function closeModal() {
-      $('#modal-backdrop').classList.remove('open');
-    }
-
-    function showConfirmModal(title, message, confirmText, isDanger, onConfirm) {
-      const m = $('#modal-content');
-      m.innerHTML = `
+function showConfirmModal(title, message, confirmText, isDanger, onConfirm) {
+  const m = $('#modal-content');
+  m.innerHTML = `
     <h4>${esc(title)}</h4>
     <p>${esc(message)}</p>
     <div class="row2" style="margin-top:14px">
@@ -286,13 +286,13 @@
       <button class="btn ${isDanger ? 'red' : 'gold'}" id="modal-ok-btn">${esc(confirmText || 'Confirm')}</button>
     </div>
   `;
-      $('#modal-backdrop').classList.add('open');
-      $('#modal-ok-btn').onclick = () => { closeModal(); onConfirm(); };
-    }
+  $('#modal-backdrop').classList.add('open');
+  $('#modal-ok-btn').onclick = () => { closeModal(); onConfirm(); };
+}
 
-    function showPromptModal(title, message, placeholder, defaultVal, onSubmit) {
-      const m = $('#modal-content');
-      m.innerHTML = `
+function showPromptModal(title, message, placeholder, defaultVal, onSubmit) {
+  const m = $('#modal-content');
+  m.innerHTML = `
     <h4>${esc(title)}</h4>
     <p>${esc(message)}</p>
     <input id="modal-inp" class="inp" value="${esc(defaultVal ?? '')}" placeholder="${esc(placeholder || '')}" style="margin-bottom:14px">
@@ -301,161 +301,161 @@
       <button class="btn gold" id="modal-sub-btn">Save</button>
     </div>
   `;
-      $('#modal-backdrop').classList.add('open');
-      const inp = $('#modal-inp');
-      setTimeout(() => { inp.focus(); inp.select(); }, 50);
-      inp.onkeydown = e => { if (e.key === 'Enter') $('#modal-sub-btn').click(); };
-      $('#modal-sub-btn').onclick = () => {
-        const val = inp.value.trim();
-        if (val === '') return toast('Please enter a value');
-        closeModal();
-        onSubmit(val);
-      };
-    }
+  $('#modal-backdrop').classList.add('open');
+  const inp = $('#modal-inp');
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  inp.onkeydown = e => { if (e.key === 'Enter') $('#modal-sub-btn').click(); };
+  $('#modal-sub-btn').onclick = () => {
+    const val = inp.value.trim();
+    if (val === '') return toast('Please enter a value');
+    closeModal();
+    onSubmit(val);
+  };
+}
 
-    function copyText(text, successMsg) {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        toast(successMsg || 'Copied to clipboard');
-      } catch (e) {
-        toast('Could not copy text');
+function copyText(text, successMsg) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    toast(successMsg || 'Copied to clipboard');
+  } catch (e) {
+    toast('Could not copy text');
+  }
+  document.body.removeChild(ta);
+}
+
+/* ---------------- TURBO API ENGINE (Deduplicated + Cached) ---------------- */
+const CACHEABLE = [
+  'publicClasses', 'listClasses', 'listTeachers', 'listSubjects',
+  'listStudents', 'getAttendanceSheet', 'getAbsentees', 'getSummary',
+  'getSummaryByDateRange', 'getSettings', 'getMyAttendance'
+];
+const ckey = (fn, a) => {
+  const args = fn === 'publicClasses' ? [] : (a || []).slice(1);
+  if (fn === 'listStudents') args.push('role:' + (S.user?.role || 'unknown'));
+  return fnCacheKey(fn, args);
+};
+
+async function rawPost(fn, args) {
+  const res = await fetch(GAS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ fn, args })
+  });
+  const json = await res.json();
+  const isOk = json.ok !== undefined ? json.ok : (json.status === 'ok');
+  const data = json.data !== undefined ? json.data : (json.result !== undefined ? json.result : json);
+  if (!isOk) throw new Error(json.error || json.message || 'Server error');
+  return data;
+}
+
+async function run(fn, ...a) {
+  const isRead = CACHEABLE.includes(fn);
+  const key = ckey(fn, a);
+
+  // Deduplicate identical in-flight read requests
+  if (isRead && IN_FLIGHT[key]) {
+    return IN_FLIGHT[key];
+  }
+
+  const task = (async () => {
+    busy(1);
+    try {
+      const data = await rawPost(fn, a);
+      busy(-1);
+      if (isRead) {
+        cacheSet(key, data);
+      } else {
+        // Any write operation invalidates staff read caches so UI stays fresh
+        clearWriteCaches();
       }
-      document.body.removeChild(ta);
-    }
-
-    /* ---------------- TURBO API ENGINE (Deduplicated + Cached) ---------------- */
-    const CACHEABLE = [
-      'publicClasses', 'listClasses', 'listTeachers', 'listSubjects',
-      'listStudents', 'getAttendanceSheet', 'getAbsentees', 'getSummary',
-      'getSummaryByDateRange', 'getSettings', 'getMyAttendance'
-    ];
-    const ckey = (fn, a) => {
-      const args = fn === 'publicClasses' ? [] : (a || []).slice(1);
-      if (fn === 'listStudents') args.push('role:' + (S.user?.role || 'unknown'));
-      return fnCacheKey(fn, args);
-    };
-
-    async function rawPost(fn, args) {
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ fn, args })
-      });
-      const json = await res.json();
-      const isOk = json.ok !== undefined ? json.ok : (json.status === 'ok');
-      const data = json.data !== undefined ? json.data : (json.result !== undefined ? json.result : json);
-      if (!isOk) throw new Error(json.error || json.message || 'Server error');
       return data;
-    }
-
-    async function run(fn, ...a) {
-      const isRead = CACHEABLE.includes(fn);
-      const key = ckey(fn, a);
-
-      // Deduplicate identical in-flight read requests
-      if (isRead && IN_FLIGHT[key]) {
-        return IN_FLIGHT[key];
+    } catch (e) {
+      busy(-1);
+      const cached = cacheGet(key);
+      if (cached !== null && isRead) {
+        toast('Low Network: Showing saved campus data');
+        return cached;
       }
-
-      const task = (async () => {
-        busy(1);
-        try {
-          const data = await rawPost(fn, a);
-          busy(-1);
-          if (isRead) {
-            cacheSet(key, data);
-          } else {
-            // Any write operation invalidates staff read caches so UI stays fresh
-            clearWriteCaches();
-          }
-          return data;
-        } catch (e) {
-          busy(-1);
-          const cached = cacheGet(key);
-          if (cached !== null && isRead) {
-            toast('Low Network: Showing saved campus data');
-            return cached;
-          }
-          const msg = e.message || String(e);
-          if (/Session expired/i.test(msg)) {
-            toast('Session expired');
-            setTimeout(() => logout(true), 800);
-          } else {
-            toast('Error: ' + msg.replace(/^Error:\s*/i, ''));
-          }
-          return undefined;
-        } finally {
-          delete IN_FLIGHT[key];
-        }
-      })();
-
-      if (isRead) IN_FLIGHT[key] = task;
-      return task;
-    }
-
-    async function call(fn, ...args) {
-      return await run(fn, S.token, ...args);
-    }
-
-    const saveSession = (tk, userObj) => {
-      try {
-        if (tk && userObj) {
-          localStorage.setItem('att_tk_v4', tk);
-          localStorage.setItem('att_usr_v4', JSON.stringify(userObj));
-        } else {
-          localStorage.removeItem('att_tk_v4');
-          localStorage.removeItem('att_usr_v4');
-        }
-      } catch (e) { }
-    };
-
-    /* ============================================================================
-     * 1. INITIALIZATION & INSTANT SESSION RESUME
-     * ============================================================================ */
-    async function init() {
-      updateNetStatus();
-      S.absDate = today();
-
-      let tk = null, savedUser = null;
-      try {
-        tk = localStorage.getItem('att_tk_v4');
-        const rawU = localStorage.getItem('att_usr_v4');
-        if (rawU) savedUser = JSON.parse(rawU);
-      } catch (e) { }
-
-      // Instant boot from localStorage session without waiting for network roundtrip!
-      if (tk && savedUser) {
-        await start({ token: tk, user: savedUser });
-        // Verify token silently in background
-        run('resume', tk).then(r => {
-          if (!r || !r.user) logout(true);
-        }).catch(() => { });
-        return;
+      const msg = e.message || String(e);
+      if (/Session expired/i.test(msg)) {
+        toast('Session expired');
+        setTimeout(() => logout(true), 800);
+      } else {
+        toast('Error: ' + msg.replace(/^Error:\s*/i, ''));
       }
-
-      if (tk) {
-        try {
-          const r = await run('resume', tk);
-          if (r && r.user) { await start(r); return; }
-        } catch (e) {
-          saveSession(null, null);
-        }
-      }
-      vLogin();
+      return undefined;
+    } finally {
+      delete IN_FLIGHT[key];
     }
+  })();
 
-    async function vLogin() {
-      const isStu = LOGIN.mode === 'student';
-      let lastEnr = '';
-      try { lastEnr = localStorage.getItem('bist_last_enr') || ''; } catch (e) { }
+  if (isRead) IN_FLIGHT[key] = task;
+  return task;
+}
 
-      $('#app').innerHTML = `
+async function call(fn, ...args) {
+  return await run(fn, S.token, ...args);
+}
+
+const saveSession = (tk, userObj) => {
+  try {
+    if (tk && userObj) {
+      localStorage.setItem('att_tk_v4', tk);
+      localStorage.setItem('att_usr_v4', JSON.stringify(userObj));
+    } else {
+      localStorage.removeItem('att_tk_v4');
+      localStorage.removeItem('att_usr_v4');
+    }
+  } catch (e) { }
+};
+
+/* ============================================================================
+ * 1. INITIALIZATION & INSTANT SESSION RESUME
+ * ============================================================================ */
+async function init() {
+  updateNetStatus();
+  S.absDate = today();
+
+  let tk = null, savedUser = null;
+  try {
+    tk = localStorage.getItem('att_tk_v4');
+    const rawU = localStorage.getItem('att_usr_v4');
+    if (rawU) savedUser = JSON.parse(rawU);
+  } catch (e) { }
+
+  // Instant boot from localStorage session without waiting for network roundtrip!
+  if (tk && savedUser) {
+    await start({ token: tk, user: savedUser });
+    // Verify token silently in background
+    run('resume', tk).then(r => {
+      if (!r || !r.user) logout(true);
+    }).catch(() => { });
+    return;
+  }
+
+  if (tk) {
+    try {
+      const r = await run('resume', tk);
+      if (r && r.user) { await start(r); return; }
+    } catch (e) {
+      saveSession(null, null);
+    }
+  }
+  vLogin();
+}
+
+async function vLogin() {
+  const isStu = LOGIN.mode === 'student';
+  let lastEnr = '';
+  try { lastEnr = localStorage.getItem('bist_last_enr') || ''; } catch (e) { }
+
+  $('#app').innerHTML = `
     <div class="login-shell">
       <div class="login-panel">
         <div class="login-brandmark">
@@ -531,225 +531,225 @@
     </div>
   `;
 
-      if (isStu) {
-        loadPublicClassesForLogin();
-      }
+  if (isStu) {
+    loadPublicClassesForLogin();
+  }
+}
+
+function renderPublicClassesDropdown(list) {
+  const sel = $('#l-class');
+  const chips = $('#stu-quick-chips');
+  if (!sel) return;
+  PUBLIC_CLASSES = list;
+  if (!list.length) {
+    sel.innerHTML = `<option value="">No classes created yet (Contact HOD)</option>`;
+    sel.disabled = true;
+    const loginButton = $('#student-login-btn');
+    if (loginButton) loginButton.disabled = true;
+    return;
+  }
+  let savedCid = '';
+  try { savedCid = localStorage.getItem('bist_last_cid') || ''; } catch (e) { }
+  if (!LOGIN.classId && savedCid && list.some(c => c.id === savedCid)) {
+    LOGIN.classId = savedCid;
+  }
+  if (!LOGIN.classId || !list.some(c => c.id === LOGIN.classId)) {
+    LOGIN.classId = list[0].id;
+  }
+  sel.innerHTML = list.map(c =>
+    `<option value="${esc(c.id)}" ${c.id === LOGIN.classId ? 'selected' : ''}>${esc(c.branch)} • Sem ${esc(c.sem)} • Sec ${esc(c.section)}</option>`
+  ).join('');
+  sel.disabled = false;
+  const loginButton = $('#student-login-btn');
+  if (loginButton) loginButton.disabled = false;
+
+  if (chips && list.length > 1) {
+    chips.innerHTML = list.map(c =>
+      `<button class="chip ${c.id === LOGIN.classId ? 'on' : ''}" onclick="LOGIN.classId='${esc(c.id)}';$('#l-class').value='${esc(c.id)}';document.querySelectorAll('#stu-quick-chips .chip').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${esc(c.branch)} S${esc(c.sem)}-${esc(c.section)}</button>`
+    ).join('');
+  }
+}
+
+async function loadPublicClassesForLogin() {
+  const sel = $('#l-class');
+  if (sel) { sel.disabled = true; sel.innerHTML = '<option value="">Checking current classes…</option>'; }
+  busy(1);
+  try {
+    const fresh = await rawPost('publicClasses', []);
+    if (Array.isArray(fresh)) {
+      cacheSet('public_classes', fresh);
+      cacheSet(fnCacheKey('publicClasses', []), fresh);
+      renderPublicClassesDropdown(fresh);
     }
-
-    function renderPublicClassesDropdown(list) {
-      const sel = $('#l-class');
-      const chips = $('#stu-quick-chips');
-      if (!sel) return;
-      PUBLIC_CLASSES = list;
-      if (!list.length) {
-        sel.innerHTML = `<option value="">No classes created yet (Contact HOD)</option>`;
-        sel.disabled = true;
-        const loginButton = $('#student-login-btn');
-        if (loginButton) loginButton.disabled = true;
-        return;
-      }
-      let savedCid = '';
-      try { savedCid = localStorage.getItem('bist_last_cid') || ''; } catch (e) { }
-      if (!LOGIN.classId && savedCid && list.some(c => c.id === savedCid)) {
-        LOGIN.classId = savedCid;
-      }
-      if (!LOGIN.classId || !list.some(c => c.id === LOGIN.classId)) {
-        LOGIN.classId = list[0].id;
-      }
-      sel.innerHTML = list.map(c =>
-        `<option value="${esc(c.id)}" ${c.id === LOGIN.classId ? 'selected' : ''}>${esc(c.branch)} • Sem ${esc(c.sem)} • Sec ${esc(c.section)}</option>`
-      ).join('');
-      sel.disabled = false;
-      const loginButton = $('#student-login-btn');
-      if (loginButton) loginButton.disabled = false;
-
-      if (chips && list.length > 1) {
-        chips.innerHTML = list.map(c =>
-          `<button class="chip ${c.id === LOGIN.classId ? 'on' : ''}" onclick="LOGIN.classId='${esc(c.id)}';$('#l-class').value='${esc(c.id)}';document.querySelectorAll('#stu-quick-chips .chip').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${esc(c.branch)} S${esc(c.sem)}-${esc(c.section)}</button>`
-        ).join('');
-      }
+  } catch (e) {
+    const cached = cacheGet('public_classes');
+    if (!navigator.onLine && Array.isArray(cached)) {
+      renderPublicClassesDropdown(cached);
+      toast('Offline: showing the last saved class list');
+    } else if (sel) {
+      sel.innerHTML = '<option value="">Could not load classes — tap Refresh</option>';
+      toast('Could not load current classes');
     }
+  } finally {
+    busy(-1);
+  }
+}
 
-    async function loadPublicClassesForLogin() {
-      const sel = $('#l-class');
-      if (sel) { sel.disabled = true; sel.innerHTML = '<option value="">Checking current classes…</option>'; }
-      busy(1);
-      try {
-        const fresh = await rawPost('publicClasses', []);
-        if (Array.isArray(fresh)) {
-          cacheSet('public_classes', fresh);
-          cacheSet(fnCacheKey('publicClasses', []), fresh);
-          renderPublicClassesDropdown(fresh);
-        }
-      } catch (e) {
-        const cached = cacheGet('public_classes');
-        if (!navigator.onLine && Array.isArray(cached)) {
-          renderPublicClassesDropdown(cached);
-          toast('Offline: showing the last saved class list');
-        } else if (sel) {
-          sel.innerHTML = '<option value="">Could not load classes — tap Refresh</option>';
-          toast('Could not load current classes');
-        }
-      } finally {
-        busy(-1);
-      }
-    }
+function refreshLoginClasses() {
+  delete MEM_CACHE['public_classes'];
+  delete MEM_CACHE[fnCacheKey('publicClasses', [])];
+  try {
+    localStorage.removeItem('bist_v4_public_classes');
+    localStorage.removeItem('bist_v4_' + fnCacheKey('publicClasses', []));
+  } catch (e) { }
+  loadPublicClassesForLogin();
+}
 
-    function refreshLoginClasses() {
-      delete MEM_CACHE['public_classes'];
-      delete MEM_CACHE[fnCacheKey('publicClasses', [])];
-      try {
-        localStorage.removeItem('bist_v4_public_classes');
-        localStorage.removeItem('bist_v4_' + fnCacheKey('publicClasses', []));
-      } catch (e) { }
-      loadPublicClassesForLogin();
-    }
+async function doStudent() {
+  const cid = $('#l-class')?.value;
+  const enr = $('#l-enr')?.value.trim().toUpperCase();
+  const pin = $('#l-pin')?.value.trim();
+  if (!cid) return toast('Please select your Class');
+  if (!enr) return toast('Please enter your Enrollment No');
+  if (!/^\d{6}$/.test(pin || '')) return toast('Please enter the 6-digit branch PIN');
+  try {
+    localStorage.setItem('bist_last_enr', enr);
+    localStorage.setItem('bist_last_cid', cid);
+  } catch (e) { }
 
-    async function doStudent() {
-      const cid = $('#l-class')?.value;
-      const enr = $('#l-enr')?.value.trim().toUpperCase();
-      const pin = $('#l-pin')?.value.trim();
-      if (!cid) return toast('Please select your Class');
-      if (!enr) return toast('Please enter your Enrollment No');
-      if (!/^\d{6}$/.test(pin || '')) return toast('Please enter the 6-digit branch PIN');
-      try {
-        localStorage.setItem('bist_last_enr', enr);
-        localStorage.setItem('bist_last_cid', cid);
-      } catch (e) { }
+  const res = await run('studentLogin', cid, enr, pin);
+  if (res) await start(res);
+}
 
-      const res = await run('studentLogin', cid, enr, pin);
-      if (res) await start(res);
-    }
+async function doStaff() {
+  const u = $('#l-user')?.value.trim();
+  const p = $('#l-pass')?.value;
+  if (!u || !p) return toast('Enter both username and password');
+  const res = await run('login', u, p);
+  if (res) await start(res);
+}
 
-    async function doStaff() {
-      const u = $('#l-user')?.value.trim();
-      const p = $('#l-pass')?.value;
-      if (!u || !p) return toast('Enter both username and password');
-      const res = await run('login', u, p);
-      if (res) await start(res);
-    }
+async function logout(silent) {
+  if (S.token) run('logout', S.token).catch(() => { });
+  const wasStudent = S.user && S.user.role === 'STUDENT';
+  S.token = null;
+  S.user = null;
+  saveSession(null, null);
+  LOGIN.mode = wasStudent ? 'student' : 'staff';
+  vLogin();
+  if (!silent) toast('Logged out safely');
+}
 
-    async function logout(silent) {
-      if (S.token) run('logout', S.token).catch(() => { });
-      const wasStudent = S.user && S.user.role === 'STUDENT';
-      S.token = null;
-      S.user = null;
-      saveSession(null, null);
-      LOGIN.mode = wasStudent ? 'student' : 'staff';
-      vLogin();
-      if (!silent) toast('Logged out safely');
-    }
+/* ============================================================================
+ * 2. APP SHELL, NAVIGATION & BATCHED STARTUP
+ * ============================================================================ */
+async function start(r) {
+  if (!r || !r.user) return;
+  S.token = r.token;
+  S.user = r.user;
+  saveSession(r.token, r.user);
 
-    /* ============================================================================
-     * 2. APP SHELL, NAVIGATION & BATCHED STARTUP
-     * ============================================================================ */
-    async function start(r) {
-      if (!r || !r.user) return;
-      S.token = r.token;
-      S.user = r.user;
-      saveSession(r.token, r.user);
+  const role = S.user.role;
+  if (role === 'STUDENT') {
+    tab('myatt');
+    return;
+  }
 
-      const role = S.user.role;
-      if (role === 'STUDENT') {
-        tab('myatt');
-        return;
-      }
+  // Render shell immediately with cached classes if available
+  const cachedClasses = cacheGet('staff_classes_' + S.user.username);
+  const cachedTeachers = cacheGet('staff_teachers');
+  if (cachedClasses) {
+    S.classes = cachedClasses;
+    S.teachers = cachedTeachers || [];
+    S.classId = S.classId || S.classes[0]?.id || '';
+    tab(role === 'HOD' ? 'report' : 'mark');
+  } else {
+    renderShell();
+    $('#view').innerHTML = role === 'HOD' ? skReport() : skList(4);
+  }
 
-      // Render shell immediately with cached classes if available
-      const cachedClasses = cacheGet('staff_classes_' + S.user.username);
-      const cachedTeachers = cacheGet('staff_teachers');
-      if (cachedClasses) {
-        S.classes = cachedClasses;
-        S.teachers = cachedTeachers || [];
-        S.classId = S.classId || S.classes[0]?.id || '';
-        tab(role === 'HOD' ? 'report' : 'mark');
+  // Single Batch Request if supported by v4.5 Turbo backend, with fallback to parallel calls
+  try {
+    if (role === 'HOD') {
+      const bRes = await rawPost('batchCall', [[
+        { fn: 'listClasses', args: [S.token] },
+        { fn: 'listTeachers', args: [S.token] },
+        { fn: 'getSettings', args: [S.token] }
+      ]]);
+      if (Array.isArray(bRes) && bRes[0]?.ok) {
+        S.classes = bRes[0].data || [];
+        S.teachers = bRes[1]?.data || [];
+        if (bRes[2]?.data?.min) S.minPct = bRes[2].data.min;
       } else {
-        renderShell();
-        $('#view').innerHTML = role === 'HOD' ? skReport() : skList(4);
+        throw new Error('Fallback to parallel');
       }
-
-      // Single Batch Request if supported by v4.5 Turbo backend, with fallback to parallel calls
-      try {
-        if (role === 'HOD') {
-          const bRes = await rawPost('batchCall', [[
-            { fn: 'listClasses', args: [S.token] },
-            { fn: 'listTeachers', args: [S.token] },
-            { fn: 'getSettings', args: [S.token] }
-          ]]);
-          if (Array.isArray(bRes) && bRes[0]?.ok) {
-            S.classes = bRes[0].data || [];
-            S.teachers = bRes[1]?.data || [];
-            if (bRes[2]?.data?.min) S.minPct = bRes[2].data.min;
-          } else {
-            throw new Error('Fallback to parallel');
-          }
-        } else {
-          S.classes = (await call('listClasses')) || [];
-        }
-      } catch (e) {
-        const [classes, teachers, settings] = await Promise.all([
-          call('listClasses'),
-          role === 'HOD' ? call('listTeachers') : Promise.resolve([]),
-          role === 'HOD' ? call('getSettings') : Promise.resolve({ min: 75 })
-        ]);
-        S.classes = classes || [];
-        S.teachers = teachers || [];
-        if (settings && settings.min) S.minPct = settings.min;
-      }
-
-      cacheSet('staff_classes_' + S.user.username, S.classes);
-      if (role === 'HOD') cacheSet('staff_teachers', S.teachers);
-
-      if (!S.classId || !S.classes.some(c => c.id === S.classId)) {
-        S.classId = S.classes[0]?.id || '';
-      }
-
-      if (!cachedClasses) {
-        tab(role === 'HOD' ? 'report' : 'mark');
-      } else {
-        const needsClassBar = ['report', 'students', 'subjects', 'absent'].includes(S.tab) || (S.tab === 'mark' && S.user.role === 'HOD');
-        renderClassBar(needsClassBar);
-      }
+    } else {
+      S.classes = (await call('listClasses')) || [];
     }
+  } catch (e) {
+    const [classes, teachers, settings] = await Promise.all([
+      call('listClasses'),
+      role === 'HOD' ? call('listTeachers') : Promise.resolve([]),
+      role === 'HOD' ? call('getSettings') : Promise.resolve({ min: 75 })
+    ]);
+    S.classes = classes || [];
+    S.teachers = teachers || [];
+    if (settings && settings.min) S.minPct = settings.min;
+  }
 
-    function getNavTabs() {
-      const role = S.user?.role;
-      if (role === 'HOD') {
-        return [
-          ['report', 'Master', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>'],
-          ['mark', 'Attend.', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'],
-          ['absent', 'Absent', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'],
-          ['students', 'Students', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>'],
-          ['subjects', 'Subjects', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>'],
-          ['setup', 'Setup', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'],
-          ['profile', 'Settings', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
-        ];
-      }
-      if (role === 'TEACHER') {
-        return [
-          ['mark', 'Attendance', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'],
-          ['absent', 'Absentees', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'],
-          ['students', 'Students', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'],
-          ['profile', 'Profile', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
-        ];
-      }
-      return [
-        ['myatt', 'My Attendance', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'],
-        ['profile', 'Profile & Info', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
-      ];
-    }
+  cacheSet('staff_classes_' + S.user.username, S.classes);
+  if (role === 'HOD') cacheSet('staff_teachers', S.teachers);
 
-    function renderShell() {
-      const u = S.user;
-      const navItems = getNavTabs();
-      const displayTitle = u.role === 'HOD' ? HOD_NAME : u.name;
-      const subtitle = u.role === 'STUDENT'
-        ? `${u.username} • ${u.label}`
-        : u.role === 'HOD'
-          ? `HOD • ${DEPT_NAME}`
-          : `Faculty • @${u.username}`;
+  if (!S.classId || !S.classes.some(c => c.id === S.classId)) {
+    S.classId = S.classes[0]?.id || '';
+  }
 
-      $('#app').innerHTML = `
+  if (!cachedClasses) {
+    tab(role === 'HOD' ? 'report' : 'mark');
+  } else {
+    const needsClassBar = ['report', 'students', 'subjects', 'absent'].includes(S.tab) || (S.tab === 'mark' && S.user.role === 'HOD');
+    renderClassBar(needsClassBar);
+  }
+}
+
+function getNavTabs() {
+  const role = S.user?.role;
+  if (role === 'HOD') {
+    return [
+      ['report', 'Master', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>'],
+      ['mark', 'Attend.', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'],
+      ['absent', 'Absent', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'],
+      ['students', 'Students', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>'],
+      ['subjects', 'Subjects', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>'],
+      ['setup', 'Setup', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'],
+      ['profile', 'Settings', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
+    ];
+  }
+  if (role === 'TEACHER') {
+    return [
+      ['mark', 'Attendance', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'],
+      ['absent', 'Absentees', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'],
+      ['students', 'Students', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'],
+      ['profile', 'Profile', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
+    ];
+  }
+  return [
+    ['myatt', 'My Attendance', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'],
+    ['profile', 'Profile & Info', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>']
+  ];
+}
+
+function renderShell() {
+  const u = S.user;
+  const navItems = getNavTabs();
+  const displayTitle = u.role === 'HOD' ? HOD_NAME : u.name;
+  const subtitle = u.role === 'STUDENT'
+    ? `${u.username} • ${u.label}`
+    : u.role === 'HOD'
+      ? `HOD • ${DEPT_NAME}`
+      : `Faculty • @${u.username}`;
+
+  $('#app').innerHTML = `
     <header class="top-bar">
       <div class="top-row">
         <div class="brand-cluster">
@@ -777,17 +777,17 @@
       `).join('')}
     </nav>
   `;
-    }
+}
 
-    function renderClassBar(showBar = true) {
-      const slot = $('#class-bar-slot');
-      if (!slot) return;
-      if (!showBar || S.user.role === 'STUDENT' || !S.classes.length) {
-        slot.innerHTML = '';
-        return;
-      }
-      const cur = S.classes.find(c => c.id === S.classId);
-      slot.innerHTML = `
+function renderClassBar(showBar = true) {
+  const slot = $('#class-bar-slot');
+  if (!slot) return;
+  if (!showBar || S.user.role === 'STUDENT' || !S.classes.length) {
+    slot.innerHTML = '';
+    return;
+  }
+  const cur = S.classes.find(c => c.id === S.classId);
+  slot.innerHTML = `
     <div class="class-bar">
       <select onchange="S.classId=this.value;tab(S.tab)">
         ${S.classes.map(c => `<option value="${esc(c.id)}" ${c.id === S.classId ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
@@ -795,141 +795,141 @@
       ${cur?.url ? `<a class="btn sm gold" style="width:auto;padding:9px 11px" target="_blank" href="${esc(cur.url)}" title="Open Google Sheet">Sheet</a>` : ''}
     </div>
   `;
-    }
+}
 
-    function noClassCard() {
-      return `
+function noClassCard() {
+  return `
     <div class="card empty">
       ${S.user.role === 'HOD'
-          ? `No Class created yet.<br><button class="btn gold sm" style="margin-top:10px" onclick="tab('setup')">+ Create First Class in Setup</button>`
-          : `No classes or subjects have been assigned to you yet. Please contact <b>${HOD_NAME} (HOD AIML)</b>.`}
+      ? `No Class created yet.<br><button class="btn gold sm" style="margin-top:10px" onclick="tab('setup')">+ Create First Class in Setup</button>`
+      : `No classes or subjects have been assigned to you yet. Please contact <b>${HOD_NAME} (HOD AIML)</b>.`}
     </div>
     ${devFooterHTML()}
   `;
+}
+
+async function tab(t) {
+  S.tab = t;
+  M = null;
+  if (!$('#view') || !$('nav.bot-nav')) renderShell();
+  document.querySelectorAll('nav.bot-nav button').forEach(b => b.classList.toggle('on', b.id === 'nb-' + t));
+  window.scrollTo(0, 0);
+
+  const needsClassBar = ['report', 'students', 'subjects', 'absent'].includes(t) || (t === 'mark' && S.user.role === 'HOD');
+  renderClassBar(needsClassBar);
+
+  const views = {
+    report: vReport,
+    mark: vMark,
+    absent: vAbsent,
+    students: vStudents,
+    subjects: vSubjects,
+    setup: vSetup,
+    myatt: vStudent,
+    profile: vProfile
+  };
+  if (views[t]) views[t]();
+}
+
+/* ============================================================================
+ * 3. HOD: MASTER REPORT (`getSummary` + `forceRecompile` for Manual Sheet Edits)
+ * ============================================================================ */
+async function vReport(forceSync = false) {
+  const v = $('#view');
+  if (!S.classId) { v.innerHTML = noClassCard(); return; }
+
+  const hasRange = Boolean(S.reportFrom && S.reportTo);
+  const cacheKey = hasRange
+    ? `summary_range_${S.classId}_${S.reportFrom}_${S.reportTo}`
+    : 'summary_' + S.classId;
+  const cachedEntry = cacheGetEntry(cacheKey);
+
+  if (!forceSync && cachedEntry) {
+    drawReportView(cachedEntry.data, !isCacheFresh(cacheKey, STAFF_TTL_MS), cachedEntry.ts);
+    if (isCacheFresh(cacheKey, STAFF_TTL_MS)) return;
+  } else {
+    v.innerHTML = skReport();
+  }
+
+  const res = hasRange
+    ? await call('getSummaryByDateRange', S.classId, S.reportFrom, S.reportTo)
+    : await call(forceSync ? 'forceRecompile' : 'getSummary', S.classId);
+  if (!res) return;
+  cacheSet(cacheKey, res);
+  if (forceSync) toast(hasRange ? 'Date-range attendance refreshed' : 'Master sheet and manual counts synced');
+  if (S.tab === 'report') drawReportView(res, false, Date.now());
+}
+
+function applyHodReportRange() {
+  const from = $('#hod-range-from')?.value || '';
+  const to = $('#hod-range-to')?.value || '';
+  if (!from || !to) return toast('Choose both start and end dates');
+  if (from > to) return toast('Start date must be before end date');
+  S.reportFrom = from;
+  S.reportTo = to;
+  S.onlyDefaulters = false;
+  vReport();
+}
+
+function reportCacheKey() {
+  return S.reportFrom && S.reportTo
+    ? `summary_range_${S.classId}_${S.reportFrom}_${S.reportTo}`
+    : 'summary_' + S.classId;
+}
+
+function clearHodReportRange() {
+  S.reportFrom = '';
+  S.reportTo = '';
+  S.onlyDefaulters = false;
+  vReport();
+}
+
+function confirmDefaulterReminderSend(count) {
+  if (!count) return toast('There are no defaulters to email');
+  const currentClass = S.classes.find(c => c.id === S.classId);
+  showConfirmModal(
+    'Send attendance reminders?',
+    `Send an email to students below ${S.minPct}% attendance in ${currentClass?.label || 'this class'}? Students without a valid email address will be skipped.`,
+    'Send Emails',
+    false,
+    async () => {
+      const result = await call('sendDefaulterReminders', S.classId);
+      if (result) toast(defaulterEmailStatus(result));
     }
+  );
+}
 
-    async function tab(t) {
-      S.tab = t;
-      M = null;
-      if (!$('#view') || !$('nav.bot-nav')) renderShell();
-      document.querySelectorAll('nav.bot-nav button').forEach(b => b.classList.toggle('on', b.id === 'nb-' + t));
-      window.scrollTo(0, 0);
+function defaulterEmailStatus(result) {
+  const parts = [`Reminder emails sent to ${result.sent} of ${result.defaulters} defaulters`];
+  if (result.missingEmail) parts.push(`${result.missingEmail} missing email`);
+  if (result.failed) parts.push(`${result.failed} not sent`);
+  if (result.reason) parts.push(result.reason);
+  if (result.error) parts.push(`Email error: ${result.error}`);
+  return parts.join('; ') + '.';
+}
 
-      const needsClassBar = ['report', 'students', 'subjects', 'absent'].includes(t) || (t === 'mark' && S.user.role === 'HOD');
-      renderClassBar(needsClassBar);
+function drawReportView(res, isSyncing, ts) {
+  const v = $('#view');
+  const table = res.table || [];
+  const min = res.min || S.minPct || 75;
+  S.minPct = min;
 
-      const views = {
-        report: vReport,
-        mark: vMark,
-        absent: vAbsent,
-        students: vStudents,
-        subjects: vSubjects,
-        setup: vSetup,
-        myatt: vStudent,
-        profile: vProfile
-      };
-      if (views[t]) views[t]();
-    }
+  if (table.length < 2) {
+    v.innerHTML = `<div class="card empty">No attendance data available yet.</div>${devFooterHTML()}`;
+    return;
+  }
 
-    /* ============================================================================
-     * 3. HOD: MASTER REPORT (`getSummary` + `forceRecompile` for Manual Sheet Edits)
-     * ============================================================================ */
-    async function vReport(forceSync = false) {
-      const v = $('#view');
-      if (!S.classId) { v.innerHTML = noClassCard(); return; }
+  const headers = table[0];
+  const totRow = table[1];
+  const stuRows = table.slice(2);
+  const pctIdx = headers.length - 1;
+  const periodSessions = totRow.slice(3, pctIdx - 1).reduce((sum, value) => sum + (Number(value) || 0), 0);
 
-      const hasRange = Boolean(S.reportFrom && S.reportTo);
-      const cacheKey = hasRange
-        ? `summary_range_${S.classId}_${S.reportFrom}_${S.reportTo}`
-        : 'summary_' + S.classId;
-      const cachedEntry = cacheGetEntry(cacheKey);
+  const isLow = r => r[pctIdx] !== '' && Number(r[pctIdx]) < min;
+  const defaultersCount = stuRows.filter(isLow).length;
+  const shownRows = S.onlyDefaulters ? stuRows.filter(isLow) : stuRows;
 
-      if (!forceSync && cachedEntry) {
-        drawReportView(cachedEntry.data, !isCacheFresh(cacheKey, STAFF_TTL_MS), cachedEntry.ts);
-        if (isCacheFresh(cacheKey, STAFF_TTL_MS)) return;
-      } else {
-        v.innerHTML = skReport();
-      }
-
-      const res = hasRange
-        ? await call('getSummaryByDateRange', S.classId, S.reportFrom, S.reportTo)
-        : await call(forceSync ? 'forceRecompile' : 'getSummary', S.classId);
-      if (!res) return;
-      cacheSet(cacheKey, res);
-      if (forceSync) toast(hasRange ? 'Date-range attendance refreshed' : 'Master sheet and manual counts synced');
-      if (S.tab === 'report') drawReportView(res, false, Date.now());
-    }
-
-    function applyHodReportRange() {
-      const from = $('#hod-range-from')?.value || '';
-      const to = $('#hod-range-to')?.value || '';
-      if (!from || !to) return toast('Choose both start and end dates');
-      if (from > to) return toast('Start date must be before end date');
-      S.reportFrom = from;
-      S.reportTo = to;
-      S.onlyDefaulters = false;
-      vReport();
-    }
-
-    function reportCacheKey() {
-      return S.reportFrom && S.reportTo
-        ? `summary_range_${S.classId}_${S.reportFrom}_${S.reportTo}`
-        : 'summary_' + S.classId;
-    }
-
-    function clearHodReportRange() {
-      S.reportFrom = '';
-      S.reportTo = '';
-      S.onlyDefaulters = false;
-      vReport();
-    }
-
-    function confirmDefaulterReminderSend(count) {
-      if (!count) return toast('There are no defaulters to email');
-      const currentClass = S.classes.find(c => c.id === S.classId);
-      showConfirmModal(
-        'Send attendance reminders?',
-        `Send an email to students below ${S.minPct}% attendance in ${currentClass?.label || 'this class'}? Students without a valid email address will be skipped.`,
-        'Send Emails',
-        false,
-        async () => {
-          const result = await call('sendDefaulterReminders', S.classId);
-          if (result) toast(defaulterEmailStatus(result));
-        }
-      );
-    }
-
-    function defaulterEmailStatus(result) {
-      const parts = [`Reminder emails sent to ${result.sent} of ${result.defaulters} defaulters`];
-      if (result.missingEmail) parts.push(`${result.missingEmail} missing email`);
-      if (result.failed) parts.push(`${result.failed} not sent`);
-      if (result.reason) parts.push(result.reason);
-      if (result.error) parts.push(`Email error: ${result.error}`);
-      return parts.join('; ') + '.';
-    }
-
-    function drawReportView(res, isSyncing, ts) {
-      const v = $('#view');
-      const table = res.table || [];
-      const min = res.min || S.minPct || 75;
-      S.minPct = min;
-
-      if (table.length < 2) {
-        v.innerHTML = `<div class="card empty">No attendance data available yet.</div>${devFooterHTML()}`;
-        return;
-      }
-
-      const headers = table[0];
-      const totRow = table[1];
-      const stuRows = table.slice(2);
-      const pctIdx = headers.length - 1;
-      const periodSessions = totRow.slice(3, pctIdx - 1).reduce((sum, value) => sum + (Number(value) || 0), 0);
-
-      const isLow = r => r[pctIdx] !== '' && Number(r[pctIdx]) < min;
-      const defaultersCount = stuRows.filter(isLow).length;
-      const shownRows = S.onlyDefaulters ? stuRows.filter(isLow) : stuRows;
-
-      v.innerHTML = `
+  v.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <span class="sync-pill">
         <span class="sync-dot ${isSyncing ? 'pulsing' : ''}"></span>
@@ -997,15 +997,15 @@
             </thead>
             <tbody>
               ${shownRows.map(r => {
-        const low = isLow(r);
-        return `<tr class="stu-tr" data-q="${esc((r[1] + ' ' + r[2]).toLowerCase())}">
+    const low = isLow(r);
+    return `<tr class="stu-tr" data-q="${esc((r[1] + ' ' + r[2]).toLowerCase())}">
                   ${r.map((c, j) => {
-          const isPct = j === pctIdx && c !== '';
-          const cls = j === 2 ? 'name-col' : (isPct ? (low ? 'low-cell' : 'ok-cell') : '');
-          return `<td class="${cls}">${esc(c)}${isPct ? '%' : ''}</td>`;
-        }).join('')}
+      const isPct = j === pctIdx && c !== '';
+      const cls = j === 2 ? 'name-col' : (isPct ? (low ? 'low-cell' : 'ok-cell') : '');
+      return `<td class="${cls}">${esc(c)}${isPct ? '%' : ''}</td>`;
+    }).join('')}
                 </tr>`;
-      }).join('')}
+  }).join('')}
             </tbody>
           </table>
         </div>
@@ -1013,89 +1013,89 @@
     </div>
     ${devFooterHTML()}
   `;
-    }
+}
 
-    function filterMasterTable() {
-      const q = ($('#rep-q')?.value || '').toLowerCase();
-      document.querySelectorAll('#master-tbl tr.stu-tr').forEach(tr => {
-        tr.style.display = tr.dataset.q.includes(q) ? '' : 'none';
-      });
-    }
+function filterMasterTable() {
+  const q = ($('#rep-q')?.value || '').toLowerCase();
+  document.querySelectorAll('#master-tbl tr.stu-tr').forEach(tr => {
+    tr.style.display = tr.dataset.q.includes(q) ? '' : 'none';
+  });
+}
 
-    async function exportAttendanceRange() {
-      if (!S.reportFrom || !S.reportTo) return toast('Choose a date range first');
-      const result = await call('exportAttendanceRangeXlsx', S.classId, S.reportFrom, S.reportTo);
-      if (!result?.base64) return;
-      try {
-        const binary = atob(result.base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const blob = new Blob([bytes], { type: result.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = result.fileName || 'Attendance-Filtered-Report.xlsx';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-        toast(`Workbook exported for ${result.range.start} to ${result.range.end}`);
-      } catch (error) {
-        toast('Could not download the workbook: ' + (error.message || String(error)));
-      }
-    }
+async function exportAttendanceRange() {
+  if (!S.reportFrom || !S.reportTo) return toast('Choose a date range first');
+  const result = await call('exportAttendanceRangeXlsx', S.classId, S.reportFrom, S.reportTo);
+  if (!result?.base64) return;
+  try {
+    const binary = atob(result.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: result.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = result.fileName || 'Attendance-Filtered-Report.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast(`Workbook exported for ${result.range.start} to ${result.range.end}`);
+  } catch (error) {
+    toast('Could not download the workbook: ' + (error.message || String(error)));
+  }
+}
 
-    /* ============================================================================
-     * 4. ATTENDANCE MARKING (Regular Subjects & HOD Extra Activities)
-     * ============================================================================ */
-    async function vMark() {
-      const v = $('#view');
-      const isHod = S.user.role === 'HOD';
-      if (isHod && !S.classId) { v.innerHTML = noClassCard(); return; }
+/* ============================================================================
+ * 4. ATTENDANCE MARKING (Regular Subjects & HOD Extra Activities)
+ * ============================================================================ */
+async function vMark() {
+  const v = $('#view');
+  const isHod = S.user.role === 'HOD';
+  if (isHod && !S.classId) { v.innerHTML = noClassCard(); return; }
 
-      const subKey = 'subs_' + (isHod ? S.classId : S.user.username);
-      const cachedSubs = cacheGet(subKey);
-      if (cachedSubs) {
-        S.subjects = cachedSubs;
-        drawMarkSubjectsList();
-        if (isCacheFresh(subKey, STAFF_TTL_MS)) return;
-      } else {
-        v.innerHTML = skList(4);
-      }
+  const subKey = 'subs_' + (isHod ? S.classId : S.user.username);
+  const cachedSubs = cacheGet(subKey);
+  if (cachedSubs) {
+    S.subjects = cachedSubs;
+    drawMarkSubjectsList();
+    if (isCacheFresh(subKey, STAFF_TTL_MS)) return;
+  } else {
+    v.innerHTML = skList(4);
+  }
 
-      const fresh = await call('listSubjects', isHod ? S.classId : '');
-      if (!fresh) return;
-      S.subjects = fresh;
-      cacheSet(subKey, fresh);
-      if (S.tab === 'mark' && !M) drawMarkSubjectsList();
-    }
+  const fresh = await call('listSubjects', isHod ? S.classId : '');
+  if (!fresh) return;
+  S.subjects = fresh;
+  cacheSet(subKey, fresh);
+  if (S.tab === 'mark' && !M) drawMarkSubjectsList();
+}
 
-    function drawMarkSubjectsList() {
-      const v = $('#view');
-      const isHod = S.user.role === 'HOD';
-      if (!S.subjects.length) {
-        v.innerHTML = `
+function drawMarkSubjectsList() {
+  const v = $('#view');
+  const isHod = S.user.role === 'HOD';
+  if (!S.subjects.length) {
+    v.innerHTML = `
       <div class="card empty">
         ${isHod
-            ? `No subjects or extra activities in this class yet.<br><button class="btn gold sm" style="margin-top:10px" onclick="tab('subjects')">+ Add Subject / Activity</button>`
-            : `No subjects assigned to you yet. Please contact ${HOD_NAME}.`}
+        ? `No subjects or extra activities in this class yet.<br><button class="btn gold sm" style="margin-top:10px" onclick="tab('subjects')">+ Add Subject / Activity</button>`
+        : `No subjects assigned to you yet. Please contact ${HOD_NAME}.`}
       </div>
       ${devFooterHTML()}
     `;
-        return;
-      }
+    return;
+  }
 
-      const regular = S.subjects.filter(s => s.type !== 'EXTRA');
-      const extras = S.subjects.filter(s => s.type === 'EXTRA');
+  const regular = S.subjects.filter(s => s.type !== 'EXTRA');
+  const extras = S.subjects.filter(s => s.type === 'EXTRA');
 
-      v.innerHTML = `
+  v.innerHTML = `
     ${regular.length ? `
       <div class="card">
         <h3>Regular Class Subjects</h3>
         <p class="hint">Tap a subject to mark or edit daily lecture attendance (P / A)</p>
         ${regular.map(s => {
-        const idx = S.subjects.indexOf(s);
-        return `
+    const idx = S.subjects.indexOf(s);
+    return `
             <div class="list-item" style="cursor:pointer" onclick="openSheet(${idx})">
               <div class="info">
                 <b>${esc(s.subject)}</b>
@@ -1107,7 +1107,7 @@
               <button class="btn sm">Mark</button>
             </div>
           `;
-      }).join('')}
+  }).join('')}
       </div>
     ` : ''}
 
@@ -1116,8 +1116,8 @@
         <h3>Extra Activities / Bonus Lectures (HOD)</h3>
         <p class="hint">Award bonus lecture counts (Workshops, Hackathons, Seminars, Sports)</p>
         ${extras.map(s => {
-        const idx = S.subjects.indexOf(s);
-        return `
+    const idx = S.subjects.indexOf(s);
+    return `
             <div class="list-item" style="cursor:pointer" onclick="openSheet(${idx})">
               <div class="info">
                 <b>${esc(s.subject)}</b>
@@ -1129,53 +1129,53 @@
               <button class="btn sm gold">Award</button>
             </div>
           `;
-      }).join('')}
+  }).join('')}
       </div>
     ` : ''}
     ${devFooterHTML()}
   `;
-    }
+}
 
-    async function openSheet(idx) {
-      const s = S.subjects[idx];
-      if (!s) return;
-      renderClassBar(false);
-      M = {
-        s,
-        date: today(),
-        sess: '1',
-        lecs: 2,
-        exists: false,
-        extra: s.type === 'EXTRA',
-        rows: [],
-        q: ''
-      };
-      await loadSheet();
-    }
+async function openSheet(idx) {
+  const s = S.subjects[idx];
+  if (!s) return;
+  renderClassBar(false);
+  M = {
+    s,
+    date: today(),
+    sess: '1',
+    lecs: 2,
+    exists: false,
+    extra: s.type === 'EXTRA',
+    rows: [],
+    q: ''
+  };
+  await loadSheet();
+}
 
-    async function loadSheet() {
-      const v = $('#view');
-      v.innerHTML = skList(7);
-      const r = await call('getAttendanceSheet', M.s.classId, M.s.subject, M.date, M.sess);
-      if (!r) return;
-      M.extra = !!r.extra;
-      M.exists = !!r.exists;
-      M.lecs = r.lecs || (M.extra ? 2 : 1);
-      M.rows = (r.rows || []).map(row => ({
-        e: row.e,
-        n: row.n,
-        s: M.extra
-          ? (row.s !== null && row.s !== '' ? Number(row.s) : 0)
-          : (row.s === 'A' ? 'A' : 'P')
-      }));
-      drawSheet();
-    }
+async function loadSheet() {
+  const v = $('#view');
+  v.innerHTML = skList(7);
+  const r = await call('getAttendanceSheet', M.s.classId, M.s.subject, M.date, M.sess);
+  if (!r) return;
+  M.extra = !!r.extra;
+  M.exists = !!r.exists;
+  M.lecs = r.lecs || (M.extra ? 2 : 1);
+  M.rows = (r.rows || []).map(row => ({
+    e: row.e,
+    n: row.n,
+    s: M.extra
+      ? (row.s !== null && row.s !== '' ? Number(row.s) : 0)
+      : (row.s === 'A' ? 'A' : 'P')
+  }));
+  drawSheet();
+}
 
-    function drawSheet() {
-      const v = $('#view');
-      const isExtra = M.extra;
+function drawSheet() {
+  const v = $('#view');
+  const isExtra = M.extra;
 
-      v.innerHTML = `
+  v.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <button class="btn sec sm" onclick="tab('mark')">Back to Subjects</button>
       <span class="tag ${M.exists ? 'ok' : ''}">${M.exists ? 'Previously Saved (Editing)' : 'New Entry'}</span>
@@ -1244,21 +1244,21 @@
     </div>
   `;
 
-      drawSheetList();
-    }
+  drawSheetList();
+}
 
-    function clampExtraRows() {
-      M.rows.forEach(r => {
-        r.s = Math.max(0, Math.min(M.lecs, parseInt(r.s, 10) || 0));
-      });
-    }
+function clampExtraRows() {
+  M.rows.forEach(r => {
+    r.s = Math.max(0, Math.min(M.lecs, parseInt(r.s, 10) || 0));
+  });
+}
 
-    function updateCountersDOM() {
-      const counters = $('#att-summary-counters');
-      if (!counters) return;
-      if (M.extra) {
-        const withCredit = M.rows.filter(r => Number(r.s) > 0).length;
-        counters.innerHTML = `
+function updateCountersDOM() {
+  const counters = $('#att-summary-counters');
+  if (!counters) return;
+  if (M.extra) {
+    const withCredit = M.rows.filter(r => Number(r.s) > 0).length;
+    counters.innerHTML = `
           <div style="background:var(--okb);color:var(--ok);padding:8px;border-radius:10px;text-align:center;font-weight:800">
             Awarded: ${withCredit}
           </div>
@@ -1266,10 +1266,10 @@
             Zero (0): ${M.rows.length - withCredit}
           </div>
         `;
-      } else {
-        const pCount = M.rows.filter(r => r.s === 'P').length;
-        const aCount = M.rows.length - pCount;
-        counters.innerHTML = `
+  } else {
+    const pCount = M.rows.filter(r => r.s === 'P').length;
+    const aCount = M.rows.length - pCount;
+    counters.innerHTML = `
           <div style="background:var(--okb);color:var(--ok);padding:8px;border-radius:10px;text-align:center;font-weight:800">
             Present: ${pCount}
           </div>
@@ -1277,30 +1277,30 @@
             Absent: ${aCount}
           </div>
         `;
-      }
-    }
+  }
+}
 
-    function drawSheetList() {
-      updateCountersDOM();
-      const listEl = $('#sheet-stu-list');
-      if (!listEl) return;
+function drawSheetList() {
+  updateCountersDOM();
+  const listEl = $('#sheet-stu-list');
+  if (!listEl) return;
 
-      if (!M.rows.length) {
-        listEl.innerHTML = `<div class="empty">No students in this class yet. Add students first.</div>`;
-        return;
-      }
+  if (!M.rows.length) {
+    listEl.innerHTML = `<div class="empty">No students in this class yet. Add students first.</div>`;
+    return;
+  }
 
-      const filtered = M.rows
-        .map((r, idx) => ({ ...r, idx }))
-        .filter(r => (r.e + ' ' + r.n).toLowerCase().includes(M.q));
+  const filtered = M.rows
+    .map((r, idx) => ({ ...r, idx }))
+    .filter(r => (r.e + ' ' + r.n).toLowerCase().includes(M.q));
 
-      if (!filtered.length) {
-        listEl.innerHTML = `<div class="empty">No matching students</div>`;
-        return;
-      }
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="empty">No matching students</div>`;
+    return;
+  }
 
-      if (M.extra) {
-        listEl.innerHTML = filtered.map(r => `
+  if (M.extra) {
+    listEl.innerHTML = filtered.map(r => `
       <div class="att-row">
         <div class="info" style="min-width:0;flex:1">
           <b style="display:block;font-size:13.5px">${esc(r.n)}</b>
@@ -1315,8 +1315,8 @@
         </div>
       </div>
     `).join('');
-      } else {
-        listEl.innerHTML = filtered.map(r => `
+  } else {
+    listEl.innerHTML = filtered.map(r => `
       <div class="att-row clickable" onclick="toggleRegular(${r.idx})">
         <div class="info" style="min-width:0;flex:1">
           <b style="display:block;font-size:14px">${esc(r.n)}</b>
@@ -1325,91 +1325,91 @@
         <div id="pa-box-${r.idx}" class="pa-box ${r.s}">${r.s}</div>
       </div>
     `).join('');
-      }
-    }
+  }
+}
 
-    // Surgical DOM toggle for 0ms tap response on low-end phones
-    function toggleRegular(i) {
-      const next = M.rows[i].s === 'P' ? 'A' : 'P';
-      M.rows[i].s = next;
-      const box = document.getElementById('pa-box-' + i);
-      if (box) {
-        box.className = 'pa-box ' + next;
-        box.textContent = next;
-      }
-      updateCountersDOM();
-    }
+// Surgical DOM toggle for 0ms tap response on low-end phones
+function toggleRegular(i) {
+  const next = M.rows[i].s === 'P' ? 'A' : 'P';
+  M.rows[i].s = next;
+  const box = document.getElementById('pa-box-' + i);
+  if (box) {
+    box.className = 'pa-box ' + next;
+    box.textContent = next;
+  }
+  updateCountersDOM();
+}
 
-    function setAllRegular(val) {
-      M.rows.forEach(r => r.s = val);
-      drawSheetList();
-    }
-    function stepExtra(i, delta) {
-      const cur = Number(M.rows[i].s) || 0;
-      const next = Math.max(0, Math.min(M.lecs, cur + delta));
-      M.rows[i].s = next;
-      const inp = document.getElementById('step-inp-' + i);
-      if (inp) inp.value = next;
-      updateCountersDOM();
-    }
-    function setExtraRow(i, val) {
-      const next = Math.max(0, Math.min(M.lecs, parseInt(val, 10) || 0));
-      M.rows[i].s = next;
-      const inp = document.getElementById('step-inp-' + i);
-      if (inp) inp.value = next;
-      updateCountersDOM();
-    }
-    function setAllExtra(val) {
-      const v = Math.max(0, Math.min(M.lecs, parseInt(val, 10) || 0));
-      M.rows.forEach(r => r.s = v);
-      drawSheetList();
-    }
+function setAllRegular(val) {
+  M.rows.forEach(r => r.s = val);
+  drawSheetList();
+}
+function stepExtra(i, delta) {
+  const cur = Number(M.rows[i].s) || 0;
+  const next = Math.max(0, Math.min(M.lecs, cur + delta));
+  M.rows[i].s = next;
+  const inp = document.getElementById('step-inp-' + i);
+  if (inp) inp.value = next;
+  updateCountersDOM();
+}
+function setExtraRow(i, val) {
+  const next = Math.max(0, Math.min(M.lecs, parseInt(val, 10) || 0));
+  M.rows[i].s = next;
+  const inp = document.getElementById('step-inp-' + i);
+  if (inp) inp.value = next;
+  updateCountersDOM();
+}
+function setAllExtra(val) {
+  const v = Math.max(0, Math.min(M.lecs, parseInt(val, 10) || 0));
+  M.rows.forEach(r => r.s = v);
+  drawSheetList();
+}
 
-    async function saveAtt() {
-      if (!navigator.onLine) {
-        return toast('You are offline. Reconnect to internet before saving.');
-      }
-      const model = M;
-      if (!model) return;
-      const sendReminders = S.user.role === 'HOD' && !model.extra && Boolean($('#auto-defaulter-reminders')?.checked);
-      const btn = $('#save-att-btn');
-      if (btn) { btn.disabled = true; btn.textContent = 'Saving to Google Sheet…'; }
+async function saveAtt() {
+  if (!navigator.onLine) {
+    return toast('You are offline. Reconnect to internet before saving.');
+  }
+  const model = M;
+  if (!model) return;
+  const sendReminders = S.user.role === 'HOD' && !model.extra && Boolean($('#auto-defaulter-reminders')?.checked);
+  const btn = $('#save-att-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving to Google Sheet…'; }
 
-      const marks = {};
-      model.rows.forEach(r => { marks[r.e] = r.s; });
-      const res = await call('saveAttendance', model.s.classId, model.s.subject, model.date, model.sess, model.lecs, marks);
+  const marks = {};
+  model.rows.forEach(r => { marks[r.e] = r.s; });
+  const res = await call('saveAttendance', model.s.classId, model.s.subject, model.date, model.sess, model.lecs, marks);
 
-      if (res) {
-        model.exists = true;
-        delete MEM_CACHE['summary_' + model.s.classId];
-        toast(res);
-        if (M === model) drawSheet();
-        if (sendReminders) {
-          const reminders = await call('sendDefaulterReminders', model.s.classId);
-          if (reminders) toast(`Attendance saved. ${defaulterEmailStatus(reminders)}`);
-        }
-      }
-      if (btn?.isConnected) { btn.disabled = false; btn.textContent = `Save ${model.extra ? 'Activity Attendance' : 'Lecture Attendance'}`; }
+  if (res) {
+    model.exists = true;
+    delete MEM_CACHE['summary_' + model.s.classId];
+    toast(res);
+    if (M === model) drawSheet();
+    if (sendReminders) {
+      const reminders = await call('sendDefaulterReminders', model.s.classId);
+      if (reminders) toast(`Attendance saved. ${defaulterEmailStatus(reminders)}`);
     }
+  }
+  if (btn?.isConnected) { btn.disabled = false; btn.textContent = `Save ${model.extra ? 'Activity Attendance' : 'Lecture Attendance'}`; }
+}
 
-    function defaulterRemindersEnabled() {
-      try { return localStorage.getItem('bist_auto_defaulter_reminders') !== 'off'; }
-      catch (e) { return true; }
-    }
+function defaulterRemindersEnabled() {
+  try { return localStorage.getItem('bist_auto_defaulter_reminders') !== 'off'; }
+  catch (e) { return true; }
+}
 
-    function setDefaulterRemindersEnabled(enabled) {
-      try { localStorage.setItem('bist_auto_defaulter_reminders', enabled ? 'on' : 'off'); } catch (e) { }
-    }
+function setDefaulterRemindersEnabled(enabled) {
+  try { localStorage.setItem('bist_auto_defaulter_reminders', enabled ? 'on' : 'off'); } catch (e) { }
+}
 
-    /* ============================================================================
-     * 5. ABSENTEES VIEW (`getAbsentees`) + WHATSAPP COPY
-     * ============================================================================ */
-    async function vAbsent() {
-      const v = $('#view');
-      if (!S.classId) { v.innerHTML = noClassCard(); return; }
-      if (!S.absDate) S.absDate = today();
+/* ============================================================================
+ * 5. ABSENTEES VIEW (`getAbsentees`) + WHATSAPP COPY
+ * ============================================================================ */
+async function vAbsent() {
+  const v = $('#view');
+  if (!S.classId) { v.innerHTML = noClassCard(); return; }
+  if (!S.absDate) S.absDate = today();
 
-      v.innerHTML = `
+  v.innerHTML = `
     <div class="card">
       <h3>Daily Absentee Tracker</h3>
       <p class="hint">View lecture-wise absentees and copy formatted list for WhatsApp groups</p>
@@ -1419,13 +1419,13 @@
     ${skList(3)}
   `;
 
-      const data = await call('getAbsentees', S.classId, S.absDate);
-      if (!data) return;
+  const data = await call('getAbsentees', S.classId, S.absDate);
+  if (!data) return;
 
-      const blocks = data.blocks || [];
-      window._lastAbsentData = data;
+  const blocks = data.blocks || [];
+  window._lastAbsentData = data;
 
-      v.innerHTML = `
+  v.innerHTML = `
     <div class="card">
       <h3>
         <span>Absentees (${esc(data.date)})</span>
@@ -1462,59 +1462,59 @@
     `}
     ${devFooterHTML()}
   `;
+}
+
+function copyAbsentWhatsApp() {
+  const d = window._lastAbsentData;
+  if (!d || !d.blocks || !d.blocks.length) return;
+  let lines = [
+    `*${COLLEGE_NAME}*`,
+    `*${DEPT_NAME} - Absentee Report*`,
+    `*Class:* ${d.label}`,
+    `*Date:* ${d.date}`,
+    `--------------------------------`
+  ];
+  d.blocks.forEach(b => {
+    lines.push(`\n*Lecture ${b.lec}: ${b.subject}* (${b.absent.length}/${b.total} Absent)`);
+    if (!b.absent.length) {
+      lines.push(`All Present`);
+    } else {
+      b.absent.forEach((st, i) => lines.push(`${i + 1}. ${st.e} - ${st.n}`));
     }
+  });
+  lines.push(`\n_HOD: ${HOD_NAME}_`);
+  copyText(lines.join('\n'), 'WhatsApp Absentee List Copied');
+}
 
-    function copyAbsentWhatsApp() {
-      const d = window._lastAbsentData;
-      if (!d || !d.blocks || !d.blocks.length) return;
-      let lines = [
-        `*${COLLEGE_NAME}*`,
-        `*${DEPT_NAME} - Absentee Report*`,
-        `*Class:* ${d.label}`,
-        `*Date:* ${d.date}`,
-        `--------------------------------`
-      ];
-      d.blocks.forEach(b => {
-        lines.push(`\n*Lecture ${b.lec}: ${b.subject}* (${b.absent.length}/${b.total} Absent)`);
-        if (!b.absent.length) {
-          lines.push(`All Present`);
-        } else {
-          b.absent.forEach((st, i) => lines.push(`${i + 1}. ${st.e} - ${st.n}`));
-        }
-      });
-      lines.push(`\n_HOD: ${HOD_NAME}_`);
-      copyText(lines.join('\n'), 'WhatsApp Absentee List Copied');
-    }
+/* ============================================================================
+ * 6. STUDENTS MANAGEMENT (`listStudents`, `addStudents`, `removeStudent`)
+ * ============================================================================ */
+async function vStudents() {
+  const v = $('#view');
+  if (!S.classId) { v.innerHTML = noClassCard(); return; }
 
-    /* ============================================================================
-     * 6. STUDENTS MANAGEMENT (`listStudents`, `addStudents`, `removeStudent`)
-     * ============================================================================ */
-    async function vStudents() {
-      const v = $('#view');
-      if (!S.classId) { v.innerHTML = noClassCard(); return; }
+  const stuKey = rosterCacheKey(S.classId);
+  const cached = cacheGet(stuKey);
+  if (cached) {
+    drawStudentsRoster(cached);
+    if (isCacheFresh(stuKey, STAFF_TTL_MS)) return;
+  } else {
+    v.innerHTML = skList(6);
+  }
 
-      const stuKey = rosterCacheKey(S.classId);
-      const cached = cacheGet(stuKey);
-      if (cached) {
-        drawStudentsRoster(cached);
-        if (isCacheFresh(stuKey, STAFF_TTL_MS)) return;
-      } else {
-        v.innerHTML = skList(6);
-      }
+  const list = await call('listStudents', S.classId);
+  if (!list) return;
+  cacheSet(stuKey, list);
+  if (S.tab === 'students') drawStudentsRoster(list);
+}
 
-      const list = await call('listStudents', S.classId);
-      if (!list) return;
-      cacheSet(stuKey, list);
-      if (S.tab === 'students') drawStudentsRoster(list);
-    }
+function drawStudentsRoster(list) {
+  const v = $('#view');
+  const isHod = S.user.role === 'HOD';
+  const curCls = S.classes.find(c => c.id === S.classId);
+  window._studentRosterContacts = list;
 
-    function drawStudentsRoster(list) {
-      const v = $('#view');
-      const isHod = S.user.role === 'HOD';
-      const curCls = S.classes.find(c => c.id === S.classId);
-      window._studentRosterContacts = list;
-
-      v.innerHTML = `
+  v.innerHTML = `
     ${isHod ? `
       <div class="card">
         <h3>Shared Branch Login PIN</h3>
@@ -1581,30 +1581,30 @@
     </div>
     ${devFooterHTML()}
   `;
-    }
+}
 
-    function filterStudentList() {
-      const q = ($('#st-q')?.value || '').toLowerCase();
-      document.querySelectorAll('#st-list-box .st-item').forEach(el => {
-        el.style.display = el.dataset.q.includes(q) ? '' : 'none';
-      });
-    }
+function filterStudentList() {
+  const q = ($('#st-q')?.value || '').toLowerCase();
+  document.querySelectorAll('#st-list-box .st-item').forEach(el => {
+    el.style.display = el.dataset.q.includes(q) ? '' : 'none';
+  });
+}
 
-    async function saveBranchStudentPin() {
-      const pin = $('#branch-student-pin')?.value.trim();
-      if (!/^\d{6}$/.test(pin || '')) return toast('Branch PIN must be exactly 6 digits');
-      const result = await call('setBranchStudentPin', S.classId, pin);
-      if (result) {
-        $('#branch-student-pin').value = '';
-        toast(result);
-      }
-    }
+async function saveBranchStudentPin() {
+  const pin = $('#branch-student-pin')?.value.trim();
+  if (!/^\d{6}$/.test(pin || '')) return toast('Branch PIN must be exactly 6 digits');
+  const result = await call('setBranchStudentPin', S.classId, pin);
+  if (result) {
+    $('#branch-student-pin').value = '';
+    toast(result);
+  }
+}
 
-    function editStudentContact(index) {
-      const student = (window._studentRosterContacts || [])[index];
-      if (!student) return;
-      const modal = $('#modal-content');
-      modal.innerHTML = `
+function editStudentContact(index) {
+  const student = (window._studentRosterContacts || [])[index];
+  if (!student) return;
+  const modal = $('#modal-content');
+  modal.innerHTML = `
         <h4>Update Student Contact</h4>
         <p class="hint">${esc(student.n)} (${esc(student.e)})</p>
         <label class="lbl" for="contact-email">Email (Optional)</label>
@@ -1616,85 +1616,85 @@
           <button class="btn gold" id="contact-save-btn">Save Contact</button>
         </div>
       `;
-      $('#modal-backdrop').classList.add('open');
-      $('#contact-save-btn').onclick = async () => {
-        const email = $('#contact-email').value.trim();
-        const phone = $('#contact-phone').value.trim();
-        const result = await call('updateStudentContact', S.classId, student.e, email, phone);
-        if (result) {
-          closeModal();
-          delete MEM_CACHE[rosterCacheKey(S.classId)];
-          toast(result);
-          vStudents();
-        }
-      };
+  $('#modal-backdrop').classList.add('open');
+  $('#contact-save-btn').onclick = async () => {
+    const email = $('#contact-email').value.trim();
+    const phone = $('#contact-phone').value.trim();
+    const result = await call('updateStudentContact', S.classId, student.e, email, phone);
+    if (result) {
+      closeModal();
+      delete MEM_CACHE[rosterCacheKey(S.classId)];
+      toast(result);
+      vStudents();
     }
+  };
+}
 
-    async function addSingleStudent() {
-      const e = $('#st-enr')?.value.trim();
-      const n = $('#st-name')?.value.trim();
-      const email = $('#st-email')?.value.trim() || '';
-      const phone = $('#st-phone')?.value.trim() || '';
-      if (!e || !n) return toast('Enter both Enrollment No and Student Name');
-      const r = await call('addStudents', S.classId, `${e}\t${n}\t${email}\t${phone}`);
+async function addSingleStudent() {
+  const e = $('#st-enr')?.value.trim();
+  const n = $('#st-name')?.value.trim();
+  const email = $('#st-email')?.value.trim() || '';
+  const phone = $('#st-phone')?.value.trim() || '';
+  if (!e || !n) return toast('Enter both Enrollment No and Student Name');
+  const r = await call('addStudents', S.classId, `${e}\t${n}\t${email}\t${phone}`);
+  if (r) {
+    delete MEM_CACHE[rosterCacheKey(S.classId)];
+    toast(r.added ? 'Student added' : 'Already exists or invalid');
+    vStudents();
+  }
+}
+
+async function addBulkStudents() {
+  const txt = $('#st-bulk')?.value.trim();
+  if (!txt) return toast('Paste student lines first');
+  const r = await call('addStudents', S.classId, txt);
+  if (r) {
+    delete MEM_CACHE[rosterCacheKey(S.classId)];
+    toast(`${r.added} added` + (r.skipped ? `, ${r.skipped} skipped` : ''));
+    vStudents();
+  }
+}
+
+function confirmRemoveStudent(enr, name) {
+  showConfirmModal(
+    'Remove Student?',
+    `Remove ${name} (${enr}) from this class and all its subject sheets?`,
+    'Remove Permanently',
+    true,
+    async () => {
+      const r = await call('removeStudent', S.classId, enr);
       if (r) {
         delete MEM_CACHE[rosterCacheKey(S.classId)];
-        toast(r.added ? 'Student added' : 'Already exists or invalid');
+        toast(r);
         vStudents();
       }
     }
+  );
+}
 
-    async function addBulkStudents() {
-      const txt = $('#st-bulk')?.value.trim();
-      if (!txt) return toast('Paste student lines first');
-      const r = await call('addStudents', S.classId, txt);
-      if (r) {
-        delete MEM_CACHE[rosterCacheKey(S.classId)];
-        toast(`${r.added} added` + (r.skipped ? `, ${r.skipped} skipped` : ''));
-        vStudents();
-      }
-    }
+/* ============================================================================
+ * 7. HOD: SUBJECTS & EXTRA ACTIVITIES (`listSubjects`, `addSubject`, `updatePriorTotal`)
+ * ============================================================================ */
+let SUB_FORM_TYPE = 'CLASS';
 
-    function confirmRemoveStudent(enr, name) {
-      showConfirmModal(
-        'Remove Student?',
-        `Remove ${name} (${enr}) from this class and all its subject sheets?`,
-        'Remove Permanently',
-        true,
-        async () => {
-          const r = await call('removeStudent', S.classId, enr);
-          if (r) {
-            delete MEM_CACHE[rosterCacheKey(S.classId)];
-            toast(r);
-            vStudents();
-          }
-        }
-      );
-    }
+async function vSubjects() {
+  const v = $('#view');
+  if (!S.classId) { v.innerHTML = noClassCard(); return; }
 
-    /* ============================================================================
-     * 7. HOD: SUBJECTS & EXTRA ACTIVITIES (`listSubjects`, `addSubject`, `updatePriorTotal`)
-     * ============================================================================ */
-    let SUB_FORM_TYPE = 'CLASS';
+  v.innerHTML = skList(4);
+  S.subjects = await call('listSubjects', S.classId) || [];
+  drawSubjectsView();
+}
 
-    async function vSubjects() {
-      const v = $('#view');
-      if (!S.classId) { v.innerHTML = noClassCard(); return; }
+function drawSubjectsView() {
+  const v = $('#view');
+  const curCls = S.classes.find(c => c.id === S.classId);
+  const isExtra = SUB_FORM_TYPE === 'EXTRA';
 
-      v.innerHTML = skList(4);
-      S.subjects = await call('listSubjects', S.classId) || [];
-      drawSubjectsView();
-    }
+  const teacherOpts = sel => `<option value="">— Unassigned —</option>` +
+    S.teachers.map(t => `<option value="${esc(t.username)}" ${t.username === sel ? 'selected' : ''}>${esc(t.name)} (@${esc(t.username)})</option>`).join('');
 
-    function drawSubjectsView() {
-      const v = $('#view');
-      const curCls = S.classes.find(c => c.id === S.classId);
-      const isExtra = SUB_FORM_TYPE === 'EXTRA';
-
-      const teacherOpts = sel => `<option value="">— Unassigned —</option>` +
-        S.teachers.map(t => `<option value="${esc(t.username)}" ${t.username === sel ? 'selected' : ''}>${esc(t.name)} (@${esc(t.username)})</option>`).join('');
-
-      v.innerHTML = `
+  v.innerHTML = `
     <div class="card">
       <h3>Add Subject or Extra Activity</h3>
       <p class="hint">${esc(curCls?.label || '')} — Creates a dedicated sheet tab automatically</p>
@@ -1744,48 +1744,48 @@
     </div>
     ${devFooterHTML()}
   `;
-    }
+}
 
-    async function createSubjectItem() {
-      const name = $('#sub-name')?.value.trim();
-      const teacher = $('#sub-teacher')?.value || '';
-      const prior = Number($('#sub-prior')?.value) || 0;
-      if (!name) return toast('Please enter a name');
-      const r = await call('addSubject', S.classId, name, teacher, SUB_FORM_TYPE, prior);
+async function createSubjectItem() {
+  const name = $('#sub-name')?.value.trim();
+  const teacher = $('#sub-teacher')?.value || '';
+  const prior = Number($('#sub-prior')?.value) || 0;
+  if (!name) return toast('Please enter a name');
+  const r = await call('addSubject', S.classId, name, teacher, SUB_FORM_TYPE, prior);
+  if (r) {
+    S.subjects = r;
+    toast((SUB_FORM_TYPE === 'EXTRA' ? 'Extra Activity' : 'Subject') + ' created');
+    drawSubjectsView();
+  }
+}
+
+async function updateSubjectTeacher(subject, teacher) {
+  const r = await call('changeTeacher', S.classId, subject, teacher);
+  if (r) toast(r);
+}
+
+function editSubjectPrior(subject, currentPrior) {
+  showPromptModal(
+    `Prior Total Classes (${subject})`,
+    `Enter total classes held before using the app (matches 'Previous Count' column C in the Sheet):`,
+    'e.g. 20',
+    String(currentPrior || 0),
+    async val => {
+      const r = await call('updatePriorTotal', S.classId, subject, Number(val) || 0);
       if (r) {
-        S.subjects = r;
-        toast((SUB_FORM_TYPE === 'EXTRA' ? 'Extra Activity' : 'Subject') + ' created');
-        drawSubjectsView();
+        toast(r);
+        vSubjects();
       }
     }
+  );
+}
 
-    async function updateSubjectTeacher(subject, teacher) {
-      const r = await call('changeTeacher', S.classId, subject, teacher);
-      if (r) toast(r);
-    }
-
-    function editSubjectPrior(subject, currentPrior) {
-      showPromptModal(
-        `Prior Total Classes (${subject})`,
-        `Enter total classes held before using the app (matches 'Previous Count' column C in the Sheet):`,
-        'e.g. 20',
-        String(currentPrior || 0),
-        async val => {
-          const r = await call('updatePriorTotal', S.classId, subject, Number(val) || 0);
-          if (r) {
-            toast(r);
-            vSubjects();
-          }
-        }
-      );
-    }
-
-    /* ============================================================================
-     * 8. HOD: SETUP TAB (Classes, Min %, Teachers)
-     * ============================================================================ */
-    async function vSetup() {
-      const v = $('#view');
-      v.innerHTML = `
+/* ============================================================================
+ * 8. HOD: SETUP TAB (Classes, Min %, Teachers)
+ * ============================================================================ */
+async function vSetup() {
+  const v = $('#view');
+  v.innerHTML = `
     <div class="card">
       <h3>Create New Class (Branch + Sem + Sec)</h3>
       <p class="hint">Creates a dedicated Google Workbook for the class</p>
@@ -1871,37 +1871,37 @@
     </div>
     ${devFooterHTML()}
   `;
-    }
+}
 
-    async function saveEmailReportSettings() {
-      const email = $('#report-email')?.value.trim();
-      if (!email) return toast('Enter the report recipient email');
-      const result = await call('setEmailReportSettings', email, $('#report-daily').checked, $('#report-weekly').checked, $('#report-monthly').checked, $('#report-hour').value, $('#report-sender').value);
-      if (result) toast(result.enabled ? 'Report settings saved for ' + result.email : 'Settings saved; all automatic reports are paused');
-    }
+async function saveEmailReportSettings() {
+  const email = $('#report-email')?.value.trim();
+  if (!email) return toast('Enter the report recipient email');
+  const result = await call('setEmailReportSettings', email, $('#report-daily').checked, $('#report-weekly').checked, $('#report-monthly').checked, $('#report-hour').value, $('#report-sender').value);
+  if (result) toast(result.enabled ? 'Report settings saved for ' + result.email : 'Settings saved; all automatic reports are paused');
+}
 
-    async function sendTestAttendanceEmail() {
-      const result = await call('sendTestAttendanceEmail');
-      if (result?.sent) toast('Test email sent to ' + result.email);
-    }
+async function sendTestAttendanceEmail() {
+  const result = await call('sendTestAttendanceEmail');
+  if (result?.sent) toast('Test email sent to ' + result.email);
+}
 
-    async function createNewClass() {
-      const b = $('#cls-branch')?.value.trim();
-      const sem = $('#cls-sem')?.value;
-      const sec = $('#cls-sec')?.value.trim();
-      const r = await call('createClass', b, sem, sec);
-      if (r) {
-        S.classes = r;
-        cacheSet('staff_classes_' + S.user.username, r);
-        if (!S.classId && r.length) S.classId = r[0].id;
-        toast('Class workbook created');
-        vSetup();
-      }
-    }
+async function createNewClass() {
+  const b = $('#cls-branch')?.value.trim();
+  const sem = $('#cls-sem')?.value;
+  const sec = $('#cls-sec')?.value.trim();
+  const r = await call('createClass', b, sem, sec);
+  if (r) {
+    S.classes = r;
+    cacheSet('staff_classes_' + S.user.username, r);
+    if (!S.classId && r.length) S.classId = r[0].id;
+    toast('Class workbook created');
+    vSetup();
+  }
+}
 
-    function openRenameClassModal(id, branch, sem, sec) {
-      const m = $('#modal-content');
-      m.innerHTML = `
+function openRenameClassModal(id, branch, sem, sec) {
+  const m = $('#modal-content');
+  m.innerHTML = `
     <h4>Rename Class</h4>
     <p>Updates the class details and renames its Google Spreadsheet file.</p>
     <label class="lbl">Branch</label>
@@ -1923,165 +1923,165 @@
       <button class="btn gold" id="rn-save-btn">Save Changes</button>
     </div>
   `;
-      $('#modal-backdrop').classList.add('open');
-      $('#rn-save-btn').onclick = async () => {
-        const nb = $('#rn-b').value.trim();
-        const ns = $('#rn-s').value;
-        const nsec = $('#rn-sec').value.trim();
-        closeModal();
-        const r = await call('renameClass', id, nb, ns, nsec);
-        if (r) {
-          S.classes = r;
-          cacheSet('staff_classes_' + S.user.username, r);
-          toast('Class renamed');
-          vSetup();
-        }
-      };
+  $('#modal-backdrop').classList.add('open');
+  $('#rn-save-btn').onclick = async () => {
+    const nb = $('#rn-b').value.trim();
+    const ns = $('#rn-s').value;
+    const nsec = $('#rn-sec').value.trim();
+    closeModal();
+    const r = await call('renameClass', id, nb, ns, nsec);
+    if (r) {
+      S.classes = r;
+      cacheSet('staff_classes_' + S.user.username, r);
+      toast('Class renamed');
+      vSetup();
     }
+  };
+}
 
-    async function saveMinPct() {
-      const val = $('#min-pct-inp')?.value;
-      const r = await call('setMinPercent', val);
-      if (r && r.min) {
-        S.minPct = r.min;
-        toast(`Minimum attendance updated to ${r.min}%`);
-      }
+async function saveMinPct() {
+  const val = $('#min-pct-inp')?.value;
+  const r = await call('setMinPercent', val);
+  if (r && r.min) {
+    S.minPct = r.min;
+    toast(`Minimum attendance updated to ${r.min}%`);
+  }
+}
+
+async function addNewTeacher() {
+  const u = $('#t-user')?.value.trim();
+  const n = $('#t-name')?.value.trim();
+  const p = $('#t-pass')?.value;
+  const r = await call('addTeacher', u, n, p);
+  if (r) {
+    S.teachers = r;
+    cacheSet('staff_teachers', r);
+    toast('Faculty account created');
+    vSetup();
+  }
+}
+
+function promptResetTeacherPw(username) {
+  showPromptModal(
+    `Reset Password (@${username})`,
+    'Enter a new password (minimum 8 characters):',
+    'New password',
+    '',
+    async newPass => {
+      const r = await call('resetTeacherPassword', username, newPass);
+      if (r) toast(r);
     }
+  );
+}
 
-    async function addNewTeacher() {
-      const u = $('#t-user')?.value.trim();
-      const n = $('#t-name')?.value.trim();
-      const p = $('#t-pass')?.value;
-      const r = await call('addTeacher', u, n, p);
+function confirmRemoveTeacher(username, name) {
+  showConfirmModal(
+    'Remove Faculty?',
+    `Remove ${name} (@${username})? Their subjects will remain intact but become unassigned.`,
+    'Remove',
+    true,
+    async () => {
+      const r = await call('removeTeacher', username);
       if (r) {
         S.teachers = r;
         cacheSet('staff_teachers', r);
-        toast('Faculty account created');
+        toast('Faculty removed');
         vSetup();
       }
     }
+  );
+}
 
-    function promptResetTeacherPw(username) {
-      showPromptModal(
-        `Reset Password (@${username})`,
-        'Enter a new password (minimum 8 characters):',
-        'New password',
-        '',
-        async newPass => {
-          const r = await call('resetTeacherPassword', username, newPass);
-          if (r) toast(r);
-        }
-      );
+/* ============================================================================
+ * 9. STUDENT DASHBOARD (`getMyAttendance` — Persistent Cache, No Repeated Fetch)
+ * ============================================================================ */
+async function vStudent(forceRefresh = false) {
+  const v = $('#view');
+  const cacheKey = 'myatt_' + (S.user?.classId || '') + '_' + (S.user?.username || '');
+  const cachedEntry = cacheGetEntry(cacheKey);
+
+  // 1. If we have cached data in localStorage, show it immediately (0ms)!
+  if (cachedEntry && cachedEntry.data) {
+    const freshEnough = isCacheFresh(cacheKey, STUDENT_TTL_MS);
+    // Do NOT re-fetch from Google Script if cache is less than 5 mins old (unless user tapped Refresh)
+    if (!forceRefresh && freshEnough) {
+      drawStudentAttendance(cachedEntry.data, false, cachedEntry.ts);
+      return;
     }
+    // Cache is older than 5 mins or user tapped Refresh -> show cached UI with subtle syncing badge
+    drawStudentAttendance(cachedEntry.data, true, cachedEntry.ts);
+  } else {
+    // First time ever opening -> show smooth Shimmer Skeleton UI
+    v.innerHTML = skStudent();
+  }
 
-    function confirmRemoveTeacher(username, name) {
-      showConfirmModal(
-        'Remove Faculty?',
-        `Remove ${name} (@${username})? Their subjects will remain intact but become unassigned.`,
-        'Remove',
-        true,
-        async () => {
-          const r = await call('removeTeacher', username);
-          if (r) {
-            S.teachers = r;
-            cacheSet('staff_teachers', r);
-            toast('Faculty removed');
-            vSetup();
-          }
-        }
-      );
-    }
+  const d = await call('getMyAttendance');
+  if (!d) return;
+  cacheSet(cacheKey, d);
+  if (forceRefresh) toast('Attendance synced');
+  if (S.tab === 'myatt') drawStudentAttendance(d, false, Date.now());
+}
 
-    /* ============================================================================
-     * 9. STUDENT DASHBOARD (`getMyAttendance` — Persistent Cache, No Repeated Fetch)
-     * ============================================================================ */
-    async function vStudent(forceRefresh = false) {
-      const v = $('#view');
-      const cacheKey = 'myatt_' + (S.user?.classId || '') + '_' + (S.user?.username || '');
-      const cachedEntry = cacheGetEntry(cacheKey);
+function applyAttendanceRange() {
+  const from = $('#att-range-from')?.value || '';
+  const to = $('#att-range-to')?.value || '';
+  if (from && to && from > to) return toast('Start date must be before end date');
+  S.attFrom = from;
+  S.attTo = to;
+  const cacheKey = 'myatt_' + (S.user?.classId || '') + '_' + (S.user?.username || '');
+  const cached = cacheGet(cacheKey);
+  if (cached) drawStudentAttendance(cached, false, cacheGetEntry(cacheKey)?.ts || Date.now());
+  else vStudent();
+}
 
-      // 1. If we have cached data in localStorage, show it immediately (0ms)!
-      if (cachedEntry && cachedEntry.data) {
-        const freshEnough = isCacheFresh(cacheKey, STUDENT_TTL_MS);
-        // Do NOT re-fetch from Google Script if cache is less than 5 mins old (unless user tapped Refresh)
-        if (!forceRefresh && freshEnough) {
-          drawStudentAttendance(cachedEntry.data, false, cachedEntry.ts);
-          return;
-        }
-        // Cache is older than 5 mins or user tapped Refresh -> show cached UI with subtle syncing badge
-        drawStudentAttendance(cachedEntry.data, true, cachedEntry.ts);
-      } else {
-        // First time ever opening -> show smooth Shimmer Skeleton UI
-        v.innerHTML = skStudent();
-      }
+function clearAttendanceRange() {
+  S.attFrom = '';
+  S.attTo = '';
+  const from = $('#att-range-from');
+  const to = $('#att-range-to');
+  if (from) from.value = '';
+  if (to) to.value = '';
+  applyAttendanceRange();
+}
 
-      const d = await call('getMyAttendance');
-      if (!d) return;
-      cacheSet(cacheKey, d);
-      if (forceRefresh) toast('Attendance synced');
-      if (S.tab === 'myatt') drawStudentAttendance(d, false, Date.now());
-    }
+function attendanceDateInRange(record, from, to) {
+  const date = String(record.d || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && (!from || date >= from) && (!to || date <= to);
+}
 
-    function applyAttendanceRange() {
-      const from = $('#att-range-from')?.value || '';
-      const to = $('#att-range-to')?.value || '';
-      if (from && to && from > to) return toast('Start date must be before end date');
-      S.attFrom = from;
-      S.attTo = to;
-      const cacheKey = 'myatt_' + (S.user?.classId || '') + '_' + (S.user?.username || '');
-      const cached = cacheGet(cacheKey);
-      if (cached) drawStudentAttendance(cached, false, cacheGetEntry(cacheKey)?.ts || Date.now());
-      else vStudent();
-    }
+function attendanceForRange(source) {
+  const subjects = (source.subjects || []).map(subject => {
+    const records = (subject.records || []).filter(r => attendanceDateInRange(r, S.attFrom, S.attTo));
+    const present = records.filter(r => r.s === 'P').length;
+    const total = records.filter(r => r.s === 'P' || r.s === 'A').length;
+    return { ...subject, records, p: present, t: total, pct: total ? Math.round(present * 1000 / total) / 10 : null };
+  });
+  const extras = (source.extras || []).map(extra => {
+    const records = (extra.records || []).filter(r => attendanceDateInRange(r, S.attFrom, S.attTo));
+    const p = records.reduce((sum, r) => sum + (Number(String(r.s).split('/')[0]) || 0), 0);
+    const t = records.reduce((sum, r) => sum + (Number(String(r.s).split('/')[1]) || 0), 0);
+    return { ...extra, records, p, t };
+  });
+  const p = subjects.reduce((sum, s) => sum + s.p, 0) + extras.reduce((sum, x) => sum + x.p, 0);
+  const t = subjects.reduce((sum, s) => sum + s.t, 0);
+  return { ...source, subjects, extras, p, t, overall: t ? Math.round(Math.min(100, p * 100 / t) * 10) / 10 : null };
+}
 
-    function clearAttendanceRange() {
-      S.attFrom = '';
-      S.attTo = '';
-      const from = $('#att-range-from');
-      const to = $('#att-range-to');
-      if (from) from.value = '';
-      if (to) to.value = '';
-      applyAttendanceRange();
-    }
+function drawStudentAttendance(source, isSyncing, ts) {
+  const inRange = Boolean(S.attFrom || S.attTo);
+  const d = inRange ? attendanceForRange(source) : source;
+  const v = $('#view');
+  const col = p => p == null ? 'var(--mu)' : p >= d.min ? 'var(--ok)' : p >= d.min - 10 ? 'var(--warn)' : 'var(--bad)';
+  const needMore = (p, t) => {
+    const m = d.min / 100;
+    if (m >= 1) return Math.max(0, t - p);
+    const x = Math.ceil((m * t - p) / (1 - m));
+    return x > 0 ? x : 0;
+  };
 
-    function attendanceDateInRange(record, from, to) {
-      const date = String(record.d || '').slice(0, 10);
-      return /^\d{4}-\d{2}-\d{2}$/.test(date) && (!from || date >= from) && (!to || date <= to);
-    }
+  const extrasSum = (d.extras || []).reduce((acc, x) => acc + (x.p || 0), 0);
 
-    function attendanceForRange(source) {
-      const subjects = (source.subjects || []).map(subject => {
-        const records = (subject.records || []).filter(r => attendanceDateInRange(r, S.attFrom, S.attTo));
-        const present = records.filter(r => r.s === 'P').length;
-        const total = records.filter(r => r.s === 'P' || r.s === 'A').length;
-        return { ...subject, records, p: present, t: total, pct: total ? Math.round(present * 1000 / total) / 10 : null };
-      });
-      const extras = (source.extras || []).map(extra => {
-        const records = (extra.records || []).filter(r => attendanceDateInRange(r, S.attFrom, S.attTo));
-        const p = records.reduce((sum, r) => sum + (Number(String(r.s).split('/')[0]) || 0), 0);
-        const t = records.reduce((sum, r) => sum + (Number(String(r.s).split('/')[1]) || 0), 0);
-        return { ...extra, records, p, t };
-      });
-      const p = subjects.reduce((sum, s) => sum + s.p, 0) + extras.reduce((sum, x) => sum + x.p, 0);
-      const t = subjects.reduce((sum, s) => sum + s.t, 0);
-      return { ...source, subjects, extras, p, t, overall: t ? Math.round(Math.min(100, p * 100 / t) * 10) / 10 : null };
-    }
-
-    function drawStudentAttendance(source, isSyncing, ts) {
-      const inRange = Boolean(S.attFrom || S.attTo);
-      const d = inRange ? attendanceForRange(source) : source;
-      const v = $('#view');
-      const col = p => p == null ? 'var(--mu)' : p >= d.min ? 'var(--ok)' : p >= d.min - 10 ? 'var(--warn)' : 'var(--bad)';
-      const needMore = (p, t) => {
-        const m = d.min / 100;
-        if (m >= 1) return Math.max(0, t - p);
-        const x = Math.ceil((m * t - p) / (1 - m));
-        return x > 0 ? x : 0;
-      };
-
-      const extrasSum = (d.extras || []).reduce((acc, x) => acc + (x.p || 0), 0);
-
-      v.innerHTML = `
+  v.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <span class="sync-pill">
         <span class="sync-dot ${isSyncing ? 'pulsing' : ''}"></span>
@@ -2119,16 +2119,16 @@
       </p>
 
       ${inRange
-          ? d.overall != null && d.overall < d.min
-            ? `<span class="tag bad" style="padding:5px 12px;font-size:11.5px">Below ${d.min}% for this period</span>`
-            : d.overall != null
-              ? `<span class="tag ok" style="padding:5px 12px;font-size:11.5px">On Track for this period</span>`
-              : `<span class="tag">No classes marked in this period</span>`
-          : d.overall != null && d.overall < d.min
-          ? `<span class="tag bad" style="padding:5px 12px;font-size:11.5px">Below ${d.min}% — Attend next <b>${needMore(d.p, d.t)}</b> classes continuously</span>`
-          : d.overall != null
-            ? `<span class="tag ok" style="padding:5px 12px;font-size:11.5px">On Track (Above ${d.min}% requirement)</span>`
-            : `<span class="tag">No classes recorded yet</span>`}
+      ? d.overall != null && d.overall < d.min
+        ? `<span class="tag bad" style="padding:5px 12px;font-size:11.5px">Below ${d.min}% for this period</span>`
+        : d.overall != null
+          ? `<span class="tag ok" style="padding:5px 12px;font-size:11.5px">On Track for this period</span>`
+          : `<span class="tag">No classes marked in this period</span>`
+      : d.overall != null && d.overall < d.min
+        ? `<span class="tag bad" style="padding:5px 12px;font-size:11.5px">Below ${d.min}% — Attend next <b>${needMore(d.p, d.t)}</b> classes continuously</span>`
+        : d.overall != null
+          ? `<span class="tag ok" style="padding:5px 12px;font-size:11.5px">On Track (Above ${d.min}% requirement)</span>`
+          : `<span class="tag">No classes recorded yet</span>`}
     </div>
 
     <!-- Regular Subjects -->
@@ -2186,19 +2186,19 @@
 
     ${devFooterHTML()}
   `;
-    }
+}
 
-    /* ============================================================================
-     * 10. PROFILE & DEPARTMENT INFO TAB
-     * ============================================================================ */
-    async function vProfile() {
-      const u = S.user;
-      const isStaff = u.role === 'HOD' || u.role === 'TEACHER';
-      const emailReportSettings = u.role === 'HOD'
-        ? await call('getEmailReportSettings') || { email: '', defaultEmail: '', senderEmail: '', senderAliases: [], daily: true, weekly: true, monthly: true, hour: 18 }
-        : null;
+/* ============================================================================
+ * 10. PROFILE & DEPARTMENT INFO TAB
+ * ============================================================================ */
+async function vProfile() {
+  const u = S.user;
+  const isStaff = u.role === 'HOD' || u.role === 'TEACHER';
+  const emailReportSettings = u.role === 'HOD'
+    ? await call('getEmailReportSettings') || { email: '', defaultEmail: '', senderEmail: '', senderAliases: [], daily: true, weekly: true, monthly: true, hour: 18 }
+    : null;
 
-      $('#view').innerHTML = `
+  $('#view').innerHTML = `
     <div class="card card-navy" style="text-align:center;padding:20px 16px">
       <div style="display:flex;justify-content:center;margin-bottom:12px">
         ${renderLogos('md')}
@@ -2209,10 +2209,10 @@
       </h3>
       <p style="margin:2px 0 10px;color:var(--gold);font-weight:800;font-size:12.5px">
         ${u.role === 'HOD'
-          ? 'Head of Department (HOD) — AIML'
-          : u.role === 'TEACHER'
-            ? `Faculty Member (@${esc(u.username)}) — AIML`
-            : `Student (${esc(u.username)}) • ${esc(u.label)}`}
+      ? 'Head of Department (HOD) — AIML'
+      : u.role === 'TEACHER'
+        ? `Faculty Member (@${esc(u.username)}) — AIML`
+        : `Student (${esc(u.username)}) • ${esc(u.label)}`}
       </p>
 
       <div class="profile-institute" style="background:rgba(255,255,255,0.08);border:1px solid rgba(197,160,89,0.35);border-radius:12px;padding:10px;text-align:left;font-size:12px;line-height:1.6">
@@ -2279,19 +2279,19 @@
     <button class="btn red" onclick="logout()">Sign Out of Account</button>
     ${devFooterHTML()}
   `;
-    }
+}
 
-    async function updateMyPassword() {
-      const o = $('#pw-old')?.value;
-      const n = $('#pw-new')?.value;
-      if (!o || !n) return toast('Enter both old and new password');
-      const r = await call('changePassword', o, n);
-      if (r) {
-        toast(r);
-        $('#pw-old').value = '';
-        $('#pw-new').value = '';
-      }
-    }
+async function updateMyPassword() {
+  const o = $('#pw-old')?.value;
+  const n = $('#pw-new')?.value;
+  if (!o || !n) return toast('Enter both old and new password');
+  const r = await call('changePassword', o, n);
+  if (r) {
+    toast(r);
+    $('#pw-old').value = '';
+    $('#pw-new').value = '';
+  }
+}
 
-    window.onload = init;
-  
+window.onload = init;
+
