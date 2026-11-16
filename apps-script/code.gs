@@ -977,9 +977,10 @@ function sendDefaulterReminders(token, classId) {
 
   let sent = 0, failed = 0, firstError = '';
   withEmail.slice(0, quotaKnown ? remaining : withEmail.length).forEach(student => {
-    const subject = 'Please maintain your attendance - below ' + summary.min + '%';
-    const body = `Dear ${student.name},\n\nYour current overall attendance is ${student.percentage}%, below the department minimum of ${summary.min}%. Please maintain the required attendance by attending upcoming classes regularly. Contact your faculty or HOD if you need support.\n\nEnrollment No: ${student.enrollment}\nDepartment of AIML\nBIST Bhopal`;
-    try { GmailApp.sendEmail(student.email, subject, body, options); sent++; }
+    const subject = 'Attendance Requirement Notice';
+    const body = `Dear ${student.name},\n\nYour current overall attendance is ${student.percentage}%, which is below the department's minimum requirement of ${summary.min}%. You are advised to attend upcoming classes regularly to meet the required attendance criteria.\n\nEnrollment No: ${student.enrollment}\nDepartment: AIML\nBIST Bhopal`;
+    const htmlBody = `<p>Dear ${htmlEscapeReport_(student.name)},</p><p>Your current overall attendance is <strong>${htmlEscapeReport_(student.percentage)}%</strong>, which is below the department's minimum requirement of <strong>${htmlEscapeReport_(summary.min)}%</strong>. You are advised to attend upcoming classes regularly to meet the required attendance criteria.</p><p><strong>Enrollment No:</strong> ${htmlEscapeReport_(student.enrollment)}<br><strong>Department:</strong> AIML<br>BIST Bhopal</p>`;
+    try { GmailApp.sendEmail(student.email, subject, body, Object.assign({}, options, { htmlBody })); sent++; }
     catch (e) { failed++; if (!firstError) firstError = String(e.message || e).slice(0, 180); }
   });
   return {
