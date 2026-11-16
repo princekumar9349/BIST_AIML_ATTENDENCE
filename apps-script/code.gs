@@ -1397,12 +1397,22 @@ function installEmailReportTriggers_(settings) {
 // Run once in the Apps Script editor after updating the script to grant Gmail,
 // Sheets, Drive export, and trigger permissions. HOD saves the destination in Setup.
 function authorizeEmailReportAutomation() {
+  // The Drive REST calls use ScriptApp.getOAuthToken(), so ensure this scope
+  // has been granted before probing Drive or exporting report workbooks.
+  ScriptApp.requireScopes(ScriptApp.AuthMode.FULL, [
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/script.external_request'
+  ]);
   MailApp.getRemainingDailyQuota();
   GmailApp.getAliases();
   ScriptApp.getProjectTriggers();
-  UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
-    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
+  const driveResponse = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
   });
+  if (driveResponse.getResponseCode() < 200 || driveResponse.getResponseCode() >= 300) {
+    throw new Error('Drive API authorization failed (' + driveResponse.getResponseCode() + '): ' + driveResponse.getContentText().slice(0, 500) + '. Confirm Drive access is in appsscript.json, then rerun this function and grant the requested permission.');
+  }
   return 'Email automation permissions are ready. Save the report email in the HOD Setup tab.';
 }
 

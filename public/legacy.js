@@ -13,7 +13,7 @@ const GROUP_NAME = 'Bansal Group of Institutes (BGI)';
 const DEVLINK_URL = 'https://devlinkhub.in';
 
 // Set the deployed Apps Script /exec URL here manually before deploying the UI.
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwT9asJ6RPWtF8ARJ-CdRyD1U8PPKSQ_Ndshr_ivBjVJT6x8xjLfZXLcZV-FtFK_7F7/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzI0TWb3nKKJFJiGOWdvVfhpWwNXu1tJ0ryNS7xpUa_BQc1N946-2gtUPuznhWBLc7r4Q/exec";
 
 // Cache TTL Rules (in milliseconds)
 const STUDENT_TTL_MS = 5 * 60 * 1000; // 5 minutes persistent student cache (no repeated fetching!)

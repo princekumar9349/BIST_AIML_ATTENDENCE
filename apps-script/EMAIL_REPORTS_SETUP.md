@@ -6,7 +6,7 @@ The Next.js frontend is deployed to Cloudflare and calls the Google Apps Script 
 
 1. Copy `code.gs` and `appsscript.json` from this folder into the existing Apps Script project used by `GAS_URL`.
 2. In the Apps Script editor, run `setInitialHODPassword('hod', 'your-unique-password-of-12-or-more-characters')` once. This creates the initial HOD account or replaces an old default HOD password. The function is not exposed through the web API.
-3. Run `authorizeEmailReportAutomation` and accept the Google permissions for mail, Sheets, Drive export, and triggers.
+3. Run `authorizeEmailReportAutomation` from the Apps Script editor. If Google shows an authorization prompt, grant the requested mail, Sheets, Drive, and trigger permissions, then run the function again after consent.
 4. Deploy the Apps Script web app as a **new version**, preserving its existing `/exec` URL and access settings.
 5. Sign into the Cloudflare app as HOD, open **Settings**, confirm the recipient (the Apps Script account email is filled in when available), optionally choose a sender alias, select the reports and send hour, then press **Save Report Settings**.
 
