@@ -1147,6 +1147,39 @@ function refreshTrainingLinks_() {
   saveTrainingSyncMap_(map);
 }
 
+/**
+ * The 10-minute refresh (autoCompile) is what notices new training attendance in the background.
+ * Install it as soon as training is linked so the HOD never has to run setupTriggers by hand.
+ * Only the compile triggers are touched; the email report triggers are left alone.
+ */
+function ensureCompileTriggers_() {
+  try {
+    const have = ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction());
+    if (!have.includes('autoCompile')) ScriptApp.newTrigger('autoCompile').timeBased().everyMinutes(10).create();
+    if (!have.includes('nightlyCompile')) ScriptApp.newTrigger('nightlyCompile').timeBased().everyDays(1).atHour(2).create();
+    return true;
+  } catch (e) {
+    Logger.log('Could not install compile triggers: ' + (e.message || e));
+    return false;
+  }
+}
+
+/**
+ * True when the Training Head's registry (class list / training sessions) changed since the last check.
+ * It clears the cached registry rows so a newly added training session is picked up straight away.
+ */
+function checkRegistryChanged_() {
+  const id = trainingRegistryId_();
+  if (!id) return false;
+  const map = trainingSyncMap_();
+  const ts = fileUpdated_(id);
+  if (map[id] === ts) return false;
+  map[id] = ts;
+  saveTrainingSyncMap_(map);
+  bustTraining_();
+  return true;
+}
+
 function trainingIdFromInput_(input) {
   input = String(input || '').trim();
   const m = /\/d\/([a-zA-Z0-9_-]{20,})/.exec(input);
@@ -1171,9 +1204,10 @@ function getTrainingLink(token) {
     const seen = {};
     trainingClasses.forEach(r => {
       const key = branchKey_(r[1]);
-      if (!seen[key]) seen[key] = { key, branch: r[1], trainingClasses: 0, matched: 0, subjects: 0 };
+      if (!seen[key]) seen[key] = { key, branch: r[1], trainingClasses: 0, matched: 0, subjects: 0, unmatched: [] };
       seen[key].trainingClasses++;
       if (hodClasses.some(c => branchKey_(c.branch) === key && String(c.sem) === String(r[2]) && sameSection_(c.section, r[3]))) seen[key].matched++;
+      else seen[key].unmatched.push('Sem ' + r[2] + ' • Sec ' + String(r[3]).toUpperCase());
       seen[key].subjects += trainingRows_('Subjects').filter(sr => sr[0] === r[0] && sr[4] === 'TRAINING').length;
     });
     out.branches = Object.keys(seen).sort().map(k => seen[k]);
@@ -1198,6 +1232,7 @@ function linkTrainingRegistry(token, urlOrId) {
   PropertiesService.getScriptProperties().setProperty(TRAINING_REGISTRY_KEY, id);
   PropertiesService.getScriptProperties().deleteProperty(TRAINING_SYNC_KEY);
   bustTraining_();
+  ensureCompileTriggers_();
   return getTrainingLink(token);
 }
 
@@ -1215,6 +1250,7 @@ function setTrainingBranches(token, branches) {
   });
   PropertiesService.getScriptProperties().setProperty(TRAINING_BRANCHES_KEY, JSON.stringify(keys));
   bustTraining_();
+  ensureCompileTriggers_();
   classes_().forEach(c => { markDirty_(c.id); bumpVer_(c.id); });
   return getTrainingLink(token);
 }
@@ -1353,7 +1389,10 @@ function compileClass_(classId) {
 function getSummary(token, classId) {
   auth_(token, ['HOD']);
   if (trainingRegistryId_() && !cache_().get('trn_chk:' + classId)) {
-    try { syncTrainingClass_(classId); } catch (e) { Logger.log('Training check skipped: ' + (e.message || e)); }
+    try {
+      if (checkRegistryChanged_()) { markDirty_(classId); bumpVer_(classId); }
+      syncTrainingClass_(classId);
+    } catch (e) { Logger.log('Training check skipped: ' + (e.message || e)); }
     cache_().put('trn_chk:' + classId, '1', 60);
   }
   const k = 'sum:' + classId + ':' + ver_(classId);
