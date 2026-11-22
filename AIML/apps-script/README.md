@@ -22,3 +22,10 @@ The Training Head runs a completely separate system (own Google account, own App
 Nothing is ever written to the Training Head's files. If the workbook cannot be read (not shared, deleted) the Master sheet still compiles with main attendance and the report shows a warning.
 
 Redeploy `code.gs` as a new web app version after updating. No new OAuth scopes are needed (Drive and Sheets are already authorised).
+
+### If training attendance does not show up
+
+1. **Setup → Training Attendance Link** must show the registry as linked with the branch ticked and **Save Branches** pressed.
+2. Each branch lists how many classes matched and names any that did not (branch, semester and section must match exactly). Create or rename the class here to match.
+3. The Training Head must have shared the registry **and** the class workbooks with this Google account; a "could not be read" warning appears above the Master table otherwise.
+4. Press **Pull Now**. After linking, the 10-minute background refresh is installed automatically (no need to run `setupTriggers`), and opening a class Master report also checks for new training attendance and new training sessions straight away.

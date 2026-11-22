@@ -10,11 +10,33 @@ import { TTL } from "../../lib/config";
  * Training Head: share training attendance with the HOD. The HOD's own system links the
  * registry below and pulls the branches it wants, so attendance never has to be exported by hand.
  */
+function ShareOutcome({ r }) {
+  const failed = (r.workbooks || []).filter((w) => !w.ok);
+  const registryError = r.sync?.ok === false ? r.sync.error : r.sync?.registry?.ok === false ? r.sync.registry.error : "";
+  const allGood = !failed.length && !registryError;
+  return (
+    <div className="card" style={{ background: allGood ? "var(--okb)" : "var(--warnb)", color: allGood ? "var(--ok)" : "var(--warn)", fontSize: 12.5, fontWeight: 700, marginTop: 10 }}>
+      {allGood ? (
+        <>Shared with <b>{r.hodEmail}</b>: registry{r.workbooks ? ` + ${r.workbooks.length} class workbook${r.workbooks.length === 1 ? "" : "s"}` : ""}.
+          {r.invited && " Some files were shared by invitation — the HOD must accept the email invitation first."}</>
+      ) : (
+        <>
+          <b>Some files could not be shared.</b>
+          {registryError && <div style={{ marginTop: 6 }}>Registry: {registryError}</div>}
+          {failed.map((w) => <div key={w.label} style={{ marginTop: 6 }}>{w.label}: {w.error || "failed"}</div>)}
+          <div style={{ marginTop: 8, fontWeight: 600 }}>If it says authorization or permission is needed, open the Apps Script editor, run any function once (for example <code>authorizeEmailReportAutomation</code>), accept the permissions, then press the button again.</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ShareWithHod() {
   const q = useQuery("getTrainingShare", [], { ttl: TTL.slow });
   const info = q.data;
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
   useEffect(() => { if (info?.hodEmail) setEmail(info.hodEmail); }, [info?.hodEmail]);
 
   const share = async () => {
@@ -22,12 +44,14 @@ export default function ShareWithHod() {
     setBusy(true);
     try {
       const r = await mutate("setHodShareEmail", [email.trim()], { timeout: 120000 });
-      toast(`Shared with ${r.hodEmail}: registry + ${r.sharedWorkbooks} class workbook${r.sharedWorkbooks === 1 ? "" : "s"}${r.failedWorkbooks ? ` (${r.failedWorkbooks} could not be shared)` : ""}.`);
+      setResult(r);
+      const problems = r.failedWorkbooks + (r.sync?.registry?.ok === false ? 1 : 0) + (r.sync?.ok === false ? 1 : 0);
+      toast(problems ? `Shared with problems — see the details below.` : `Shared with ${r.hodEmail}: registry + ${r.sharedWorkbooks} class workbook${r.sharedWorkbooks === 1 ? "" : "s"}.`);
     } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   };
   const resync = async () => {
     setBusy(true);
-    try { await mutate("resyncTrainingShare", [], { timeout: 60000 }); toast("Registry refreshed"); } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
+    try { const r = await mutate("resyncTrainingShare", [], { timeout: 60000 }); setResult(r); toast(r.sync?.ok === false ? "Could not refresh the registry — see the details below." : "Registry refreshed"); } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   };
   const copy = async () => {
     try { await navigator.clipboard.writeText(info.registryUrl); toast("Registry link copied. Send it to the HOD."); }
@@ -50,7 +74,10 @@ export default function ShareWithHod() {
           <button className="btn gold" style={{ marginTop: 10 }} disabled={busy} onClick={share}>
             {busy ? "Sharing…" : info.hodEmail ? "Update & Re-share (view only)" : "Share with HOD (view only)"}
           </button>
-          {info.hodEmail && <p className="hint" style={{ color: "var(--ok)", fontWeight: 800 }}>Currently shared with {info.hodEmail}. New classes are shared automatically.</p>}
+          {info.hodEmail && !result && <p className="hint" style={{ color: "var(--ok)", fontWeight: 800 }}>Currently shared with {info.hodEmail}. New classes are shared automatically.</p>}
+          <p className="hint" style={{ marginTop: 6 }}>Use the Google account the HOD opens Google Sheets with (Gmail or a Google Workspace address). Other addresses get an invitation email instead.</p>
+
+          {result && <ShareOutcome r={result} />}
 
           <div style={{ marginTop: 14, borderTop: "1px solid var(--ln)", paddingTop: 10 }}>
             <label className="lbl">Registry link to send to the HOD</label>

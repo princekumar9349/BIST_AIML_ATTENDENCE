@@ -42,7 +42,7 @@ function apiMethod_(name) {
     resume, logout, login, studentLogin, changePassword,
     publicClasses, listClasses, createClass, renameClass,
     listTeachers, addTeacher, resetTeacherPassword, removeTeacher,
-    getTrainingShare, setHodShareEmail, resyncTrainingShare, assignTrainer,
+    getTrainingShare, setHodShareEmail, resyncTrainingShare, assignTrainer, rebuildTrainingMaster,
     listTrainers, addTrainer, resetTrainerPassword, removeTrainer, getTrainingSummary,
     listSubjects, addSubject, changeTeacher, updatePriorTotal,
     listStudents, addStudents, updateStudentContact, setBranchStudentPin, removeStudent,
@@ -269,7 +269,31 @@ function setupTriggers() {
 }
 
 function label_(c) { return c.branch + ' • Sem ' + c.sem + ' • Sec ' + c.section; }
-function fileName_(branch, sem, section) { return 'Attendance - ' + branch + ' - Sem ' + sem + ' - Sec ' + section; }
+// Every workbook created here is named "Training Attendance - ..." so it is never confused with the
+// HOD's own "Attendance - ..." workbooks once the two are shared with each other.
+function fileName_(branch, sem, section) { return 'Training Attendance - ' + branch + ' - Sem ' + sem + ' - Sec ' + section; }
+
+/** Renames older class workbooks (created as "Attendance - ...") to the Training Attendance naming. */
+function renameWorkbooksToTrainingNames_() {
+  let changed = 0;
+  try {
+    const sh = reg_().getSheetByName('Classes');
+    const data = sh.getDataRange().getDisplayValues();
+    for (let i = 1; i < data.length; i++) {
+      const id = data[i][0], branch = data[i][1], sem = data[i][2], section = data[i][3], ssId = data[i][4], file = data[i][6];
+      if (!id || !ssId) continue;
+      const wanted = fileName_(branch, sem, section);
+      if (file === wanted) continue;
+      try {
+        SpreadsheetApp.openById(ssId).rename(wanted);
+        sh.getRange(i + 1, 7).setValue(wanted);
+        changed++;
+      } catch (e) { Logger.log('Could not rename workbook ' + ssId + ': ' + (e.message || e)); }
+    }
+    if (changed) bust_();
+  } catch (e) { Logger.log('Workbook rename skipped: ' + (e.message || e)); }
+  return changed;
+}
 function classes_() {
   return rows_('Classes').map(r => ({ id: r[0], branch: r[1], sem: r[2], section: r[3], ssId: r[4], url: r[5], file: r[6] }));
 }
@@ -552,6 +576,7 @@ function createClass(token, branch, sem, section) {
   reg_().getSheetByName('Classes').appendRow([id, safeSheetText_(v.branch), v.sem, safeSheetText_(v.section), ss.getId(), ss.getUrl(), safeSheetText_(file)]);
   bust_();
   syncTrainingShare_(ss.getId());
+  ensureCompileTriggers_();
   return listClasses(token);
 }
 
@@ -787,18 +812,62 @@ function shareRegistry_() {
   return ss;
 }
 
-function shareViewer_(spreadsheet, email) {
-  if (!email) return;
-  try { spreadsheet.addViewer(email); } catch (e) { Logger.log('Could not share ' + spreadsheet.getId() + ' with ' + email + ': ' + e); }
+/** Short, readable reason from an Apps Script or Drive API error. */
+function errorText_(e) {
+  return String((e && e.message) || e || 'Unknown error').replace(/^Exception:\s*/i, '').slice(0, 220);
+}
+
+/**
+ * Gives `email` view-only access to one file. Tries Apps Script's own sharing first; if Google refuses
+ * (for example the address is not a Google account), falls back to the Drive API, which sends an
+ * invitation email instead. Never throws: returns { ok, error, via }.
+ */
+function shareFileWithEmail_(fileId, email) {
+  if (!email) return { ok: true, via: 'none' };
+  let firstError = '';
+  try {
+    DriveApp.getFileById(fileId).addViewer(email);
+    return { ok: true, via: 'direct' };
+  } catch (e) { firstError = errorText_(e); }
+  try {
+    const res = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + fileId + '/permissions?sendNotificationEmail=true&supportsAllDrives=true', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      payload: JSON.stringify({ role: 'reader', type: 'user', emailAddress: email }),
+      muteHttpExceptions: true
+    });
+    const code = res.getResponseCode();
+    if (code >= 200 && code < 300) return { ok: true, via: 'invitation' };
+    let message = '';
+    try { message = JSON.parse(res.getContentText()).error.message; } catch (x) { message = res.getContentText(); }
+    return { ok: false, error: errorText_(message) || ('Drive API error ' + code), via: 'invitation' };
+  } catch (e) { return { ok: false, error: firstError || errorText_(e) }; }
+}
+
+/** Installs the background compile triggers once. Without them nothing rebuilds the Master sheets on a timer. */
+function ensureCompileTriggers_() {
+  try {
+    const have = ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction());
+    if (!have.includes('autoCompile')) ScriptApp.newTrigger('autoCompile').timeBased().everyMinutes(10).create();
+    if (!have.includes('nightlyCompile')) ScriptApp.newTrigger('nightlyCompile').timeBased().everyDays(1).atHour(2).create();
+    return true;
+  } catch (e) {
+    Logger.log('Could not install compile triggers: ' + errorText_(e));
+    return false;
+  }
 }
 
 /**
  * Rewrites the share registry from the main registry (cheap: two small tabs) and makes sure the HOD
  * can view it. Pass the id of a newly created class workbook to share it immediately.
- * Failures are logged, never thrown, so a sharing problem cannot block class or session creation.
+ * Returns { ok, error, registry }; it never throws, so a sharing problem cannot block class or
+ * session creation, but callers that care (the Share screen) show the reason.
  */
 function syncTrainingShare_(newWorkbookId) {
+  const out = { ok: true, error: '', registry: { ok: true, error: '' } };
   try {
+    renameWorkbooksToTrainingNames_();
     const reg = shareRegistry_();
     const email = hodShareEmail_();
     const classRows = reg_().getSheetByName('Classes').getDataRange().getDisplayValues().slice(1).filter(r => r[0]);
@@ -813,10 +882,15 @@ function syncTrainingShare_(newWorkbookId) {
     write('Classes', ['ClassId', 'Branch', 'Semester', 'Section', 'SpreadsheetId', 'URL', 'FileName'], classRows.map(r => r.slice(0, 7)));
     write('Subjects', ['ClassId', 'Subject', 'SheetName', 'Teacher', 'Type', 'PriorTotal'], subjectRows);
     if (email) {
-      shareViewer_(reg, email);
-      if (newWorkbookId) shareViewer_(SpreadsheetApp.openById(newWorkbookId), email);
+      out.registry = shareFileWithEmail_(reg.getId(), email);
+      if (newWorkbookId) shareFileWithEmail_(newWorkbookId, email);
     }
-  } catch (e) { Logger.log('Training share sync failed: ' + (e.message || e)); }
+  } catch (e) {
+    out.ok = false;
+    out.error = errorText_(e);
+    Logger.log('Training share sync failed: ' + out.error);
+  }
+  return out;
 }
 
 function getTrainingShare(token) {
@@ -831,27 +905,36 @@ function getTrainingShare(token) {
   };
 }
 
-/** Saves the HOD's Google account and shares the registry plus every class workbook with it (view only). */
+/**
+ * Saves the HOD's Google account and shares the registry plus every class workbook with it (view only).
+ * Returns the share status with a per-file result so the screen can show exactly what failed and why.
+ */
 function setHodShareEmail(token, email) {
   auth_(token, ['TRAINING_HEAD']);
   email = String(email || '').trim().toLowerCase();
   if (!EMAIL_RE.test(email)) throw new Error('Enter the HOD Google account email');
   PropertiesService.getScriptProperties().setProperty(HOD_SHARE_EMAIL_KEY, email);
-  syncTrainingShare_();
-  let shared = 0, failed = 0;
-  classes_().forEach(c => {
-    try { SpreadsheetApp.openById(c.ssId).addViewer(email); shared++; } catch (e) { failed++; }
+  const sync = syncTrainingShare_();
+  const workbooks = classes_().map(c => {
+    const r = shareFileWithEmail_(c.ssId, email);
+    return { label: label_(c), ok: r.ok, error: r.error || '', via: r.via || '' };
   });
+  ensureCompileTriggers_();
   const info = getTrainingShare(token);
-  info.sharedWorkbooks = shared;
-  info.failedWorkbooks = failed;
+  info.sync = sync;
+  info.workbooks = workbooks;
+  info.sharedWorkbooks = workbooks.filter(w => w.ok).length;
+  info.failedWorkbooks = workbooks.filter(w => !w.ok).length;
+  info.invited = workbooks.some(w => w.via === 'invitation') || sync.registry.via === 'invitation';
   return info;
 }
 
 function resyncTrainingShare(token) {
   auth_(token, ['TRAINING_HEAD']);
-  syncTrainingShare_();
-  return getTrainingShare(token);
+  const sync = syncTrainingShare_();
+  const info = getTrainingShare(token);
+  info.sync = sync;
+  return info;
 }
 
 /* ================= SUBJECTS & EXTRA ACTIVITIES ================= */
@@ -900,6 +983,7 @@ function addSubject_(token, classId, subject, teacher, type, priorTotal) {
   reg_().getSheetByName('Subjects').appendRow([classId, safeSheetText_(subject), safeSheetText_(sheetName), teacher || '', type, Number(priorTotal) || 0]);
   bust_(); markDirty_(classId); bumpVer_(classId);
   syncTrainingShare_();
+  if (type === 'TRAINING') ensureCompileTriggers_();
   return listSubjects(token, classId);
 }
 
@@ -1496,6 +1580,33 @@ function getSummaryByDateRange(token, classId, startDate, endDate) {
  * class, with each student's present count and training percentage. HOD sees the same
  * data merged into the Master sheet.
  */
+/**
+ * URL of the class workbook's Master sheet, (re)building it when it is missing or training attendance
+ * changed since the last build. The Master sheet in this system holds the training sessions only.
+ */
+function masterUrlFor_(classId, buildIfNeeded) {
+  const ss = ss_(classId);
+  let master = ss.getSheetByName('Master');
+  if (buildIfNeeded && (!master || cache_().get('dirty:' + classId))) {
+    cache_().remove('dirty:' + classId);
+    try { return compileClass_(classId).url; }
+    catch (e) { markDirty_(classId); Logger.log('Master build failed for ' + classId + ': ' + errorText_(e)); }
+    master = ss.getSheetByName('Master');
+  }
+  return master ? ss.getUrl() + '#gid=' + master.getSheetId() : ss.getUrl();
+}
+
+/** Training Head: rebuild the Master sheet of one class workbook right now. */
+function rebuildTrainingMaster(token, classId) {
+  auth_(token, ['TRAINING_HEAD']);
+  cls_(classId);
+  ensureCompileTriggers_();
+  cache_().remove('dirty:' + classId);
+  bustStudents_(classId);
+  const result = lockedSoft_(() => compileClass_(classId));
+  return { url: result.url, students: Math.max(0, result.table.length - 2) };
+}
+
 function getTrainingSummary(token, classId) {
   const u = auth_(token, ['TRAINING_HEAD', 'TRAINER']);
   if (!canAccessTrainingClass_(u, classId)) throw new Error('This branch is not assigned to you');
@@ -1505,7 +1616,9 @@ function getTrainingSummary(token, classId) {
   const built = masterTable_(students, [], trn, [], [], trn.map(r => sheetStats_(ss, r)), [], { emptyPct: '' });
   // Training-only table: show plain subject names (the "(Training)" suffix only helps in the HOD Master sheet).
   built.out[0] = built.out[0].map(h => String(h).replace(/ \(Training\)$/, ''));
-  return { table: built.out, min: getMin_(), sessions: trn.length };
+  const result = { table: built.out, min: getMin_(), sessions: trn.length };
+  if (u.role === 'TRAINING_HEAD') result.masterUrl = masterUrlFor_(classId, trn.length > 0);
+  return result;
 }
 
 function exportAttendanceRangeXlsx(token, classId, startDate, endDate) {

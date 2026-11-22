@@ -45,3 +45,12 @@ Because there is no HOD here, the Training Head also owns **classes and students
 To let the HOD compile training into their Master sheet: **Classes → Share with HOD**, enter the HOD's Google account email and press *Share*. This gives that account view-only access to every class workbook and to a **Training Attendance Share Registry** (only class names, workbook IDs and training sessions — never the Users sheet with logins). New classes are shared automatically. Send the registry link to the HOD, who links it in their Setup screen.
 
 The first time, run `authorizeEmailReportAutomation` (or any function) once in the Apps Script editor so the Drive/Sheets sharing scopes are granted.
+
+## Troubleshooting
+
+- **Master sheet missing in a class workbook:** open **Training** (the report) for that class, or press **Rebuild Master Sheet**. The sheet is also rebuilt in the background every 10 minutes; the background trigger is installed automatically the first time you create a class or training session, or press *Share with HOD*.
+- **Share with HOD fails:** the screen now lists every file that could not be shared, with Google's reason. Typical fixes:
+  - the HOD address must be the Google account they open Sheets with; other addresses receive an invitation email that must be accepted;
+  - after deploying a new `code.gs`, run any function once in the Apps Script editor (for example `authorizeEmailReportAutomation`) and accept the permissions, then press the button again.
+- **HOD does not see training attendance:** check the HOD Setup screen — it shows which of your classes did not match (branch, semester and section must be spelled the same in both systems), then press **Pull Now**.
+- **File names:** every class workbook here is named `Training Attendance - <Branch> - Sem <n> - Sec <x>` so it is never confused with the HOD's `Attendance - …` workbooks. Older workbooks are renamed automatically the next time you press *Share with HOD* (or create a class).

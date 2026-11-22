@@ -2,18 +2,28 @@
 import { useState } from "react";
 import { useStaff } from "../ctx";
 import { useQuery } from "../../lib/useQuery";
+import { mutate } from "../../lib/api";
+import { toast } from "../../lib/ui-store";
 import { TTL } from "../../lib/config";
+import { errorText } from "../../lib/utils";
 import { DevFooter, Empty, QueryState, SkReport, SyncPill } from "../ui";
 
 export default function TrainingReport() {
   const { role, classId, currentClass, minPct, setTab } = useStaff();
   const [onlyLow, setOnlyLow] = useState(false);
   const [search, setSearch] = useState("");
+  const [building, setBuilding] = useState(false);
   const q = useQuery("getTrainingSummary", [classId], { ttl: TTL.report, enabled: Boolean(classId) });
 
   if (!classId) {
     return <Empty>{role === "TRAINER" ? <>No training session has been assigned to you yet. Please contact the <b>Training Head</b>.</> : <>No classes yet.<br /><button className="btn gold sm" style={{ marginTop: 10 }} onClick={() => setTab("setup")}>+ Create First Class</button></>}</Empty>;
   }
+
+  const rebuild = async () => {
+    setBuilding(true);
+    try { await mutate("rebuildTrainingMaster", [classId], { timeout: 90000 }); toast("Master sheet rebuilt in the class workbook"); }
+    catch (e) { toast(errorText(e)); } finally { setBuilding(false); }
+  };
 
   return (
     <QueryState q={q} skeleton={<SkReport />}>
@@ -58,7 +68,11 @@ export default function TrainingReport() {
               <p className="hint">Training sessions only. The HOD's Master sheet compiles this together with main attendance automatically.</p>
               <div className="row2" style={{ marginBottom: 10 }}>
                 <button className={`btn sm ${onlyLow ? "red" : "sec"}`} onClick={() => setOnlyLow(!onlyLow)}>{onlyLow ? `Showing Below ${min}% Only` : `Filter Below ${min}%`}</button>
+                {role === "TRAINING_HEAD" && res.masterUrl && <a className="btn sm gold" target="_blank" rel="noopener noreferrer" href={res.masterUrl}>Open Master Sheet</a>}
               </div>
+              {role === "TRAINING_HEAD" && (
+                <button className="btn sm outline" style={{ marginBottom: 10 }} disabled={building} onClick={rebuild}>{building ? "Rebuilding…" : "Rebuild Master Sheet"}</button>
+              )}
               <input className="inp" placeholder="Search student name or enrollment no…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 10 }} />
               {shown.length ? (
                 <div className="table-wrap">

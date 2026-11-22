@@ -85,6 +85,11 @@ export default function TrainingLink() {
                     <small style={{ display: "block", color: "var(--mu)", fontWeight: 600 }}>
                       {b.subjects} training session{b.subjects === 1 ? "" : "s"} • {b.matched} of {b.trainingClasses} class{b.trainingClasses === 1 ? "" : "es"} match yours by semester &amp; section
                     </small>
+                    {b.unmatched?.length > 0 && (
+                      <small style={{ display: "block", color: "var(--warn)", fontWeight: 700, marginTop: 3 }}>
+                        Not matched: {b.unmatched.join(", ")} — create this class here with the same branch, semester and section.
+                      </small>
+                    )}
                   </span>
                 </label>
               ))}
