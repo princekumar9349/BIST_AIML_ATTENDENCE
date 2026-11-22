@@ -29,6 +29,11 @@ export default function TrainingLink() {
   const classes = info?.trainingClasses || [];
   const hodClasses = info?.hodClasses || [];
   const selected = useMemo(() => classes.filter((t) => picks[t.id]?.on), [classes, picks]);
+  const linkedCount = classes.filter((t) => t.linkedTo).length;
+  const last = info?.lastPull;
+  const lastText = last
+    ? new Date(last.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
+    : "";
   const setPick = (id, patch) => setPicks((p) => ({ ...p, [id]: { ...p[id], ...patch } }));
 
   const link = async () => {
@@ -70,6 +75,18 @@ export default function TrainingLink() {
     } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   };
 
+  // One tap: pull every class that is already linked (all branches) and compile them.
+  const updateAll = async () => {
+    setBusy(true);
+    setResults(null);
+    try {
+      const r = await mutate("syncTrainingNow", [], { timeout: 180000 });
+      setResults(r.results || []);
+      const bad = (r.results || []).filter((x) => !x.ok || (x.trainingStudents > 0 && x.matchedStudents === 0)).length;
+      toast(!r.classes ? "No class is linked yet. Tick classes below and press Pull & Compile once." : bad ? "Updated with warnings — see the details below." : `Updated ${r.classes} class${r.classes === 1 ? "" : "es"} from all branches.`);
+    } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
+  };
+
   const unlink = async () => {
     const ok = await confirmDialog({ title: "Unlink training attendance?", message: "Master sheets go back to main attendance only. Nothing is deleted in the Training Head's files.", confirmText: "Unlink", danger: true });
     if (!ok) return;
@@ -106,6 +123,21 @@ export default function TrainingLink() {
               Linked to “{info.registryName}”. <a href={info.registryUrl} target="_blank" rel="noopener noreferrer">Open</a>
             </p>
           )}
+
+          <div className="card" style={{ background: "var(--gold-light)", margin: "10px 0" }}>
+            <button className="btn gold" disabled={busy || !linkedCount} onClick={updateAll}>
+              {busy ? "Updating…" : `Update All Branches Now${linkedCount ? ` (${linkedCount} class${linkedCount === 1 ? "" : "es"})` : ""}`}
+            </button>
+            <p className="hint" style={{ margin: "8px 0 0" }}>
+              {linkedCount
+                ? "One tap pulls training attendance for every class below that is ticked and saved, across all branches."
+                : "Tick your classes below and press Pull & Compile once. After that, this button updates all of them in one tap."}
+            </p>
+            <p className="hint" style={{ margin: "4px 0 0", color: info.daily?.enabled ? "var(--ok)" : "var(--mu)", fontWeight: 800 }}>
+              {info.daily?.enabled ? `Updates automatically every day at ${info.daily.hour > 12 ? info.daily.hour - 12 : info.daily.hour} ${info.daily.hour >= 12 ? "PM" : "AM"}.` : "The automatic daily update (5 PM) switches on after your first pull."}
+              {last ? ` Last update: ${lastText}${last.source === "daily" ? " (automatic)" : ""} — ${last.classes} class${last.classes === 1 ? "" : "es"}${last.warnings ? `, ${last.warnings} with warnings` : ""}.` : ""}
+            </p>
+          </div>
 
           <label className="lbl">Which classes do you want to pull?</label>
           {classes.length ? classes.map((t) => {
