@@ -18,6 +18,10 @@ const BRANCH_PIN_MAX_FAILURES = 30;
 const LOGIN_LOCK_SECONDS = 600;
 const REG_KEY = 'REG_ID_V4';
 const RESERVED = ['students', 'master'];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TRAINING_REGISTRY_KEY = 'TRAINING_REGISTRY_ID';   // Spreadsheet the Training Head shared with the HOD account
+const TRAINING_BRANCHES_KEY = 'TRAINING_BRANCHES';      // JSON array of branch keys the HOD chose to pull
+const TRAINING_SYNC_KEY = 'TRAINING_SYNC';              // JSON { fileId: lastUpdatedMs } used to detect new training data
 
 let REG_ = null;
 let MEMO_ = {};     // In-execution data cache
@@ -41,6 +45,7 @@ function apiMethod_(name) {
     getAttendanceSheet, saveAttendance, getAbsentees,
     getSummary, getSummaryByDateRange, exportAttendanceRangeXlsx, forceRecompile, getSettings, setMinPercent,
     getMyAttendance, getEmailReportSettings, setEmailReportSettings,
+    getTrainingLink, linkTrainingRegistry, setTrainingBranches, unlinkTrainingRegistry, syncTrainingNow,
     sendTestAttendanceEmail, sendDefaulterReminders
   };
   return Object.prototype.hasOwnProperty.call(methods, name) ? methods[name] : null;
@@ -237,6 +242,7 @@ function compileClassSafely_(classId, clearDirty) {
 }
 
 function autoCompile() {
+  try { refreshTrainingLinks_(); } catch (e) { Logger.log('Training link refresh failed: ' + (e.message || e)); }
   return compileDirty_(240000);
 }
 
@@ -436,7 +442,7 @@ function login(username, password) {
 function setInitialHODPassword(username, password) {
   username = String(username || 'hod').trim().toLowerCase();
   password = String(password || '');
-  if (!/^[a-z0-9_.]{3,}$/.test(username)) throw new Error('Username: min 3 letters/numbers');
+  if (!/^[a-z0-9_.@+-]{3,}$/.test(username)) throw new Error('Username: min 3 letters/numbers (an email address is fine)');
   if (password.length < 12) throw new Error('Set a strong HOD password with at least 12 characters');
   const sheet = reg_().getSheetByName('Users');
   ensureUserSaltColumn_(sheet);
@@ -1027,6 +1033,212 @@ function getAbsentees(token, classId, date) {
   return { label: label_(cls_(classId)), date, blocks };
 }
 
+/* ================= TRAINING LINK (read-only import from the Training Head's workbooks) ================= */
+/**
+ * The Training Head runs a separate system with its own Apps Script and spreadsheets. They share a
+ * "registry" spreadsheet (Classes + Subjects tabs) and the class workbooks with this account.
+ * The HOD links the registry once and chooses which BRANCHES to pull. Each class here is matched to
+ * the Training Head's class by branch + semester + section, and the TRAINING subject sheets are read
+ * (never written) when the Master sheet is compiled. Students are matched by enrollment number.
+ */
+
+function branchKey_(branch) { return norm_(branch).replace(/\s+/g, ' '); }
+function sameSection_(a, b) { return norm_(a) === norm_(b); }
+
+function trainingRegistryId_() { return PropertiesService.getScriptProperties().getProperty(TRAINING_REGISTRY_KEY) || ''; }
+
+function trainingBranches_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(TRAINING_BRANCHES_KEY) || '[]'); }
+  catch (e) { return []; }
+}
+
+function trainingRows_(name) {
+  const k = 'trn:' + name;
+  if (MEMO_[k]) return MEMO_[k];
+  let v = cget_(k);
+  if (!v) {
+    const id = trainingRegistryId_();
+    if (!id) return [];
+    const sheet = SpreadsheetApp.openById(id).getSheetByName(name);
+    v = sheet ? sheet.getDataRange().getDisplayValues().slice(1).filter(r => r[0]) : [];
+    cput_(k, v, 900);
+  }
+  MEMO_[k] = v;
+  return v;
+}
+
+function bustTraining_() {
+  Object.keys(MEMO_).forEach(k => { if (k.indexOf('trn') === 0) delete MEMO_[k]; });
+  cache_().removeAll(['trn:Classes', 'trn:Subjects']);
+}
+
+/** The Training Head class (and its TRAINING subjects) that belongs to this HOD class, or null. */
+function trainingSource_(classId) {
+  const memoKey = 'trnsrc:' + classId;
+  if (MEMO_[memoKey] !== undefined) return MEMO_[memoKey];
+  let res = null;
+  if (trainingRegistryId_()) {
+    const c = cls_(classId);
+    if (trainingBranches_().includes(branchKey_(c.branch))) {
+      const tc = trainingRows_('Classes').find(r =>
+        branchKey_(r[1]) === branchKey_(c.branch) && String(r[2]) === String(c.sem) && sameSection_(r[3], c.section));
+      if (tc) res = { classId: tc[0], ssId: tc[4], subjects: trainingRows_('Subjects').filter(r => r[0] === tc[0] && r[4] === 'TRAINING') };
+    }
+  }
+  MEMO_[memoKey] = res;
+  return res;
+}
+
+function trainingSs_(src) {
+  const k = 'trn:' + src.ssId;
+  if (SS_MEMO_[k]) return SS_MEMO_[k];
+  return (SS_MEMO_[k] = SpreadsheetApp.openById(src.ssId));
+}
+
+/** Training subjects of a class plus a stats provider; never throws so a sharing problem cannot break the Master sheet. */
+function trainingFor_(classId) {
+  const empty = { rows: [], ss: null, error: '' };
+  try {
+    const src = trainingSource_(classId);
+    if (!src || !src.subjects.length) return empty;
+    return { rows: src.subjects, ss: trainingSs_(src), error: '' };
+  } catch (e) {
+    Logger.log('Training workbook unavailable for ' + classId + ': ' + (e.message || e));
+    return { rows: [], ss: null, error: String(e.message || e) };
+  }
+}
+
+function fileUpdated_(id) { return DriveApp.getFileById(id).getLastUpdated().getTime(); }
+
+/** Marks a class dirty when the Training Head's workbook (or the registry) changed since the last check. */
+function syncTrainingClass_(classId, map) {
+  const src = trainingSource_(classId);
+  if (!src) return false;
+  const own = !map;
+  map = map || trainingSyncMap_();
+  const ts = fileUpdated_(src.ssId);
+  const changed = map[src.ssId] !== ts;
+  if (changed) {
+    map[src.ssId] = ts;
+    markDirty_(classId);
+    bumpVer_(classId);
+    if (own) saveTrainingSyncMap_(map);
+  }
+  return changed;
+}
+
+function trainingSyncMap_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(TRAINING_SYNC_KEY) || '{}'); }
+  catch (e) { return {}; }
+}
+function saveTrainingSyncMap_(map) { PropertiesService.getScriptProperties().setProperty(TRAINING_SYNC_KEY, JSON.stringify(map)); }
+
+function refreshTrainingLinks_() {
+  const id = trainingRegistryId_();
+  if (!id || !trainingBranches_().length) return;
+  const map = trainingSyncMap_();
+  const regTs = fileUpdated_(id);
+  const registryChanged = map[id] !== regTs;
+  if (registryChanged) { map[id] = regTs; bustTraining_(); }
+  classes_().forEach(c => {
+    if (registryChanged) delete MEMO_['trnsrc:' + c.id];
+    try { syncTrainingClass_(c.id, map); } catch (e) { Logger.log('Training sync skipped for ' + c.id + ': ' + (e.message || e)); }
+  });
+  saveTrainingSyncMap_(map);
+}
+
+function trainingIdFromInput_(input) {
+  input = String(input || '').trim();
+  const m = /\/d\/([a-zA-Z0-9_-]{20,})/.exec(input);
+  const id = m ? m[1] : input;
+  if (!/^[a-zA-Z0-9_-]{20,}$/.test(id)) throw new Error('Paste the full Google Sheets link of the Training registry');
+  return id;
+}
+
+function getTrainingLink(token) {
+  auth_(token, ['HOD']);
+  const id = trainingRegistryId_();
+  const out = { linked: false, registryUrl: '', registryName: '', branches: [], enabled: trainingBranches_(), error: '', account: '' };
+  try { out.account = Session.getEffectiveUser().getEmail(); } catch (e) {}
+  if (!id) return out;
+  out.linked = true;
+  try {
+    const reg = SpreadsheetApp.openById(id);
+    out.registryName = reg.getName();
+    out.registryUrl = reg.getUrl();
+    const trainingClasses = trainingRows_('Classes');
+    const hodClasses = classes_();
+    const seen = {};
+    trainingClasses.forEach(r => {
+      const key = branchKey_(r[1]);
+      if (!seen[key]) seen[key] = { key, branch: r[1], trainingClasses: 0, matched: 0, subjects: 0 };
+      seen[key].trainingClasses++;
+      if (hodClasses.some(c => branchKey_(c.branch) === key && String(c.sem) === String(r[2]) && sameSection_(c.section, r[3]))) seen[key].matched++;
+      seen[key].subjects += trainingRows_('Subjects').filter(sr => sr[0] === r[0] && sr[4] === 'TRAINING').length;
+    });
+    out.branches = Object.keys(seen).sort().map(k => seen[k]);
+  } catch (e) {
+    out.error = 'Cannot open the Training registry. Ask the Training Head to share it with ' + (out.account || 'this account') + '. (' + String(e.message || e).slice(0, 120) + ')';
+  }
+  return out;
+}
+
+function linkTrainingRegistry(token, urlOrId) {
+  auth_(token, ['HOD']);
+  const id = trainingIdFromInput_(urlOrId);
+  let reg;
+  try { reg = SpreadsheetApp.openById(id); }
+  catch (e) {
+    let account = '';
+    try { account = Session.getEffectiveUser().getEmail(); } catch (x) {}
+    throw new Error('Cannot open that sheet. Ask the Training Head to share it with ' + (account || 'the HOD Google account') + ' (viewer access is enough).');
+  }
+  if (!reg.getSheetByName('Classes') || !reg.getSheetByName('Subjects'))
+    throw new Error('This is not a Training registry (it needs Classes and Subjects tabs). Use the link shown in the Training Head app.');
+  PropertiesService.getScriptProperties().setProperty(TRAINING_REGISTRY_KEY, id);
+  PropertiesService.getScriptProperties().deleteProperty(TRAINING_SYNC_KEY);
+  bustTraining_();
+  return getTrainingLink(token);
+}
+
+function setTrainingBranches(token, branches) {
+  auth_(token, ['HOD']);
+  if (!trainingRegistryId_()) throw new Error('Link the Training registry first');
+  if (!Array.isArray(branches)) branches = [];
+  const known = {};
+  trainingRows_('Classes').forEach(r => { known[branchKey_(r[1])] = true; });
+  const keys = [];
+  branches.forEach(b => {
+    const key = branchKey_(b);
+    if (!known[key]) throw new Error('Branch "' + String(b).trim() + '" is not in the Training registry');
+    if (!keys.includes(key)) keys.push(key);
+  });
+  PropertiesService.getScriptProperties().setProperty(TRAINING_BRANCHES_KEY, JSON.stringify(keys));
+  bustTraining_();
+  classes_().forEach(c => { markDirty_(c.id); bumpVer_(c.id); });
+  return getTrainingLink(token);
+}
+
+function unlinkTrainingRegistry(token) {
+  auth_(token, ['HOD']);
+  const props = PropertiesService.getScriptProperties();
+  [TRAINING_REGISTRY_KEY, TRAINING_BRANCHES_KEY, TRAINING_SYNC_KEY].forEach(k => props.deleteProperty(k));
+  bustTraining_();
+  classes_().forEach(c => { markDirty_(c.id); bumpVer_(c.id); });
+  return getTrainingLink(token);
+}
+
+/** Pulls the latest training attendance right now for one class (or all linked classes) and recompiles it. */
+function syncTrainingNow(token, classId) {
+  auth_(token, ['HOD']);
+  bustTraining_();
+  const list = classId ? [cls_(classId)] : classes_();
+  let touched = 0;
+  list.forEach(c => { if (trainingSource_(c.id)) { touched++; markDirty_(c.id); bumpVer_(c.id); } });
+  if (classId) return { classes: touched, summary: getSummary(token, classId) };
+  return { classes: touched };
+}
+
 /* ================= FAST MASTER SHEET COMPILER & CACHE ================= */
 
 function sheetStats_(ss, sr) {
@@ -1058,25 +1270,53 @@ function columnLetter_(column) {
   return label;
 }
 
+/**
+ * Builds the Master table. Subjects form three blocks: MAIN (this workbook's regular subjects),
+ * TRAINING (imported from the Training Head's workbook) and EXTRA (HOD bonus activities).
+ *   TOTAL      = main present + training present + extra credit
+ *   PERCENTAGE = TOTAL over (main classes held + training sessions held)
+ *   MAIN % / TRAINING % are added only when the class has training sessions.
+ * Without training the table is identical to the previous main-only layout.
+ */
+function masterTable_(students, cls, trn, ext, cs, ts, es, opts) {
+  opts = opts || {};
+  const hasTrn = trn.length > 0 && cls.length > 0;
+  const sum = list => list.reduce((a, b) => a + b, 0);
+  const mainDenom = sum(cs.map(x => x.total));
+  const trnDenom = sum(ts.map(x => x.total));
+  const denom = mainDenom + trnDenom;
+  const pct = (n, d) => d ? Math.round(Math.min(100, n * 100 / d) * 100) / 100 : '';
+  const header = ['S.NO.', 'ENROLLMENT NO.', 'STUDENT NAME'].concat(
+    cls.map(r => r[1]), trn.map(r => r[1] + ' (Training)'), ext.map(r => r[1]),
+    hasTrn ? ['MAIN %', 'TRAINING %'] : [], ['TOTAL', 'PERCENTAGE']);
+  const totals = ['', '', 'Total Classes'].concat(
+    cs.map(x => x.total), ts.map(x => x.total), es.map(x => x.total || ''),
+    hasTrn ? ['', ''] : [], [denom, denom ? 100 : opts.emptyPct === undefined ? 100 : opts.emptyPct]);
+  const out = [header, totals];
+  students.forEach((r, i) => {
+    const c = cs.map(x => x.p[r[0]] || 0);
+    const t = ts.map(x => x.p[r[0]] || 0);
+    const e = es.map(x => x.p[r[0]] || 0);
+    const total = sum(c) + sum(t) + sum(e);
+    out.push([i + 1, r[0], r[1]].concat(c, t, e.map(v => v || ''),
+      hasTrn ? [pct(sum(c) + sum(e), mainDenom), pct(sum(t), trnDenom)] : [],
+      [total, pct(total, denom)]));
+  });
+  return { out, hasTrn };
+}
+
 function compileClass_(classId) {
   const ss = ss_(classId);
   const all = rows_('Subjects').filter(r => r[0] === classId);
   const cls = all.filter(r => r[4] !== 'EXTRA');
   const ext = all.filter(r => r[4] === 'EXTRA');
+  const training = trainingFor_(classId);
+  const trn = training.rows;
   const stu = studentRows_(classId).sort((a, b) => numSort_(a[0], b[0]));
-  const cs = cls.map(r => sheetStats_(ss, r));
-  const es = ext.map(r => sheetStats_(ss, r));
-  const denom = cs.reduce((a, x) => a + x.total, 0);
-
-  const out = [['S.NO.', 'ENROLLMENT NO.', 'STUDENT NAME'].concat(cls.map(r => r[1]), ext.map(r => r[1]), ['TOTAL', 'PERCENTAGE'])];
-  out.push(['', '', 'Total Classes'].concat(cs.map(x => x.total), es.map(x => x.total || ''), [denom, 100]));
-  stu.forEach((r, i) => {
-    const c = cs.map(x => x.p[r[0]] || 0);
-    const e = es.map(x => x.p[r[0]] || 0);
-    const total = c.concat(e).reduce((a, b) => a + b, 0);
-    const pct = denom ? Math.round(Math.min(100, total * 100 / denom) * 100) / 100 : '';
-    out.push([i + 1, r[0], r[1]].concat(c, e.map(v => v || ''), [total, pct]));
-  });
+  const built = masterTable_(stu, cls, trn, ext,
+    cls.map(r => sheetStats_(ss, r)), trn.map(r => sheetStats_(training.ss, r)), ext.map(r => sheetStats_(ss, r)));
+  const out = built.out;
+  const trainingCols = built.hasTrn ? 2 : 0;
 
   const sum = ss.getSheetByName('Master') || ss.insertSheet('Master');
   sum.clearContents();
@@ -1090,6 +1330,7 @@ function compileClass_(classId) {
   sum.clearConditionalFormatRules();
   if (out.length > 2) {
     sum.getRange(3, W, out.length - 2, 1).setNumberFormat('0.00');
+    if (trainingCols) sum.getRange(3, W - 3, out.length - 2, 2).setNumberFormat('0.00');
     const percentColumn = columnLetter_(W);
     const belowMinimum = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=AND(ISNUMBER($' + percentColumn + '3),$' + percentColumn + '3<' + getMin_() + ')')
@@ -1100,7 +1341,7 @@ function compileClass_(classId) {
   sum.setFrozenRows(2);
   sum.setFrozenColumns(3);
 
-  const result = { table: out, url: ss.getUrl() + '#gid=' + sum.getSheetId(), min: getMin_() };
+  const result = { table: out, url: ss.getUrl() + '#gid=' + sum.getSheetId(), min: getMin_(), training: { linked: trainingCols > 0, sessions: trn.length, error: training.error } };
   try { cache_().put('sum:' + classId + ':' + ver_(classId), pack_(result), 1800); } catch (e) {}
   return result;
 }
@@ -1111,6 +1352,10 @@ function compileClass_(classId) {
  */
 function getSummary(token, classId) {
   auth_(token, ['HOD']);
+  if (trainingRegistryId_() && !cache_().get('trn_chk:' + classId)) {
+    try { syncTrainingClass_(classId); } catch (e) { Logger.log('Training check skipped: ' + (e.message || e)); }
+    cache_().put('trn_chk:' + classId, '1', 60);
+  }
   const k = 'sum:' + classId + ':' + ver_(classId);
   const dirty = cache_().get('dirty:' + classId);
   if (!dirty) {
@@ -1123,69 +1368,52 @@ function getSummary(token, classId) {
   return compileClass_(classId);
 }
 
+/** Per-subject stats limited to a date range, same shape as sheetStats_ but without previous counts. */
+function rangeStats_(ss, sr, startDate, endDate) {
+  const res = { total: 0, p: {} };
+  const sh = ss && ss.getSheetByName(sr[2]);
+  if (!sh) return res;
+  const isExtra = sr[4] === 'EXTRA';
+  const data = sh.getDataRange().getDisplayValues();
+  if (!data.length) return res;
+  const cols = [];
+  for (let j = 3; j < data[0].length; j++) {
+    const match = isExtra ? /^(\d{4}-\d{2}-\d{2}) S\d+ x(\d+)$/.exec(data[0][j]) : /^(\d{4}-\d{2}-\d{2}) L\d+$/.exec(data[0][j]);
+    if (!match || match[1] < startDate || match[1] > endDate) continue;
+    cols.push(j);
+    res.total += isExtra ? Number(match[2]) || 0 : 1;
+  }
+  for (let i = 1; i < data.length; i++) {
+    const enrollment = data[i][0];
+    if (!enrollment) continue;
+    let present = 0;
+    cols.forEach(col => {
+      const value = data[i][col];
+      if (isExtra) present += Number(value) || 0;
+      else if (value === 'P') present++;
+    });
+    res.p[enrollment] = present;
+  }
+  return res;
+}
+
 function getSummaryByDateRange(token, classId, startDate, endDate) {
   auth_(token, ['HOD']);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || '') || !/^\d{4}-\d{2}-\d{2}$/.test(endDate || '') || startDate > endDate)
     throw new Error('Choose a valid start and end date');
-
   const ss = ss_(classId);
   const subjects = rows_('Subjects').filter(r => r[0] === classId);
   const regular = subjects.filter(r => r[4] !== 'EXTRA');
   const extras = subjects.filter(r => r[4] === 'EXTRA');
+  const training = trainingFor_(classId);
   const students = studentRows_(classId).sort((a, b) => numSort_(a[0], b[0]));
-  const columns = subjects.map(sr => {
-    const sh = ss.getSheetByName(sr[2]);
-    const data = sh ? sh.getDataRange().getDisplayValues() : [];
-    const cols = [];
-    let total = 0;
-    if (data.length) {
-      for (let j = 3; j < data[0].length; j++) {
-        const header = data[0][j];
-        const regularMatch = /^(\d{4}-\d{2}-\d{2}) L\d+$/.exec(header);
-        const extraMatch = /^(\d{4}-\d{2}-\d{2}) S\d+ x(\d+)$/.exec(header);
-        const dateMatch = sr[4] === 'EXTRA' ? extraMatch : regularMatch;
-        if (!dateMatch || dateMatch[1] < startDate || dateMatch[1] > endDate) continue;
-        cols.push(j);
-        total += sr[4] === 'EXTRA' ? Number(extraMatch[2]) || 0 : 1;
-      }
-    }
-    return { sr, data, cols, total };
-  });
-
-  const attendance = {};
-  students.forEach(st => attendance[st[0]] = {});
-  columns.forEach(({ sr, data, cols }) => {
-    const isExtra = sr[4] === 'EXTRA';
-    for (let i = 1; i < data.length; i++) {
-      const enrollment = data[i][0];
-      if (!enrollment || !attendance[enrollment]) continue;
-      let present = 0;
-      cols.forEach(col => {
-        const value = data[i][col];
-        if (isExtra) present += Number(value) || 0;
-        else if (value === 'P') present++;
-      });
-      attendance[enrollment][sr[2]] = present;
-    }
-  });
-
-  const regCols = columns.filter(c => c.sr[4] !== 'EXTRA');
-  const extraCols = columns.filter(c => c.sr[4] === 'EXTRA');
-  const denominator = regCols.reduce((sum, c) => sum + c.total, 0);
-  const header = ['S.NO.', 'ENROLLMENT NO.', 'STUDENT NAME'].concat(regular.map(r => r[1]), extras.map(r => r[1]), ['TOTAL', 'PERCENTAGE']);
-  const totalRow = ['', '', 'Total Classes'].concat(regCols.map(c => c.total), extraCols.map(c => c.total || ''), [denominator, denominator ? 100 : '']);
-  const table = [header, totalRow];
-  students.forEach((st, index) => {
-    const regP = regular.map(sr => attendance[st[0]][sr[2]] || 0);
-    const extraP = extras.map(sr => attendance[st[0]][sr[2]] || 0);
-    const presentTotal = regP.concat(extraP).reduce((sum, count) => sum + count, 0);
-    const percent = denominator ? Math.round(Math.min(100, presentTotal * 100 / denominator) * 100) / 100 : '';
-    table.push([index + 1, st[0], st[1]].concat(regP, extraP.map(v => v || ''), [presentTotal, percent]));
-  });
-
+  const built = masterTable_(students, regular, training.rows, extras,
+    regular.map(sr => rangeStats_(ss, sr, startDate, endDate)),
+    training.rows.map(sr => rangeStats_(training.ss, sr, startDate, endDate)),
+    extras.map(sr => rangeStats_(ss, sr, startDate, endDate)), { emptyPct: '' });
   const master = ss.getSheetByName('Master');
   return {
-    table,
+    table: built.out,
     url: master ? ss.getUrl() + '#gid=' + master.getSheetId() : ss.getUrl(),
     min: getMin_(),
     range: { start: startDate, end: endDate }
@@ -1230,24 +1458,26 @@ function warmClass_(classId) {
   const all = rows_('Subjects').filter(r => r[0] === classId);
   const stu = studentRows_(classId);
   const res = {};
-  stu.forEach(s => res[s[0]] = { subjects: [], extras: [] });
+  stu.forEach(s => res[s[0]] = { subjects: [], extras: [], training: [] });
 
-  all.forEach(sr => {
+  const addSubject = (book, sr, bucket) => {
     const extra = sr[4] === 'EXTRA';
-    const sh = ss.getSheetByName(sr[2]);
+    const sh = book ? book.getSheetByName(sr[2]) : null;
     const d = sh ? sh.getDataRange().getDisplayValues() : [['', '', '']];
     const heads = d[0];
     const rowOf = {};
     for (let i = 1; i < d.length; i++) if (d[i][0]) rowOf[d[i][0]] = d[i];
     stu.forEach(s => {
       const row = rowOf[s[0]];
-      const out = { subject: sr[1], teacher: teachers[sr[3]] || '', p: row ? Number(row[2]) || 0 : 0, t: Number(sr[5]) || 0, pct: null, records: [] };
+      let participated = false;
+      const out = { subject: sr[1], teacher: bucket === 'training' ? '' : (teachers[sr[3]] || ''), p: row ? Number(row[2]) || 0 : 0, t: Number(sr[5]) || 0, pct: null, records: [] };
       for (let c = 3; c < heads.length; c++) {
         const v = row ? row[c] : '';
         if (extra) {
           const m = /x(\d+)$/.exec(heads[c]); const N = m ? Number(m[1]) : 0;
           out.t += N;
           if (row && v !== '') {
+            participated = true;
             const n = Number(v) || 0;
             out.p += n;
             out.records.push({ d: heads[c].replace(/ x\d+$/, ''), s: n + '/' + N, k: n >= N ? 'P' : n > 0 ? 'M' : 'A' });
@@ -1262,9 +1492,15 @@ function warmClass_(classId) {
       }
       out.records.reverse();
       out.pct = out.t ? Math.round(out.p * 1000 / out.t) / 10 : null;
-      (extra ? res[s[0]].extras : res[s[0]].subjects).push(out);
+      // An extra activity only appears for the students who took part in it.
+      if (extra && !participated && out.p === 0) return;
+      res[s[0]][bucket].push(out);
     });
-  });
+  };
+
+  all.forEach(sr => addSubject(ss, sr, sr[4] === 'EXTRA' ? 'extras' : 'subjects'));
+  const training = trainingFor_(classId);
+  training.rows.forEach(sr => addSubject(training.ss, sr, 'training'));
 
   const puts = {};
   Object.keys(res).forEach(e => { puts['stu:' + classId + ':' + ver + ':' + e] = pack_(res[e]); });
@@ -1283,13 +1519,14 @@ function getMyAttendance(token) {
   const fromCache = () => { const h = cache_().get(key); if (!h) return null; try { return unpack_(h); } catch (e) { return null; } };
   let data = fromCache();
   if (!data) {
-    data = lockedSoft_(() => fromCache() || warmClass_(u.classId)[u.username] || { subjects: [], extras: [] });
+    data = lockedSoft_(() => fromCache() || warmClass_(u.classId)[u.username] || { subjects: [], extras: [], training: [] });
   }
-  const subjects = data.subjects, extras = data.extras;
-  const T = subjects.reduce((a, x) => a + x.t, 0);
-  const P = subjects.reduce((a, x) => a + x.p, 0) + extras.reduce((a, x) => a + x.p, 0);
+  const subjects = data.subjects, extras = data.extras, training = data.training || [];
+  // Overall matches the Master PERCENTAGE: main + training classes held, plus extra-activity credit.
+  const T = subjects.reduce((a, x) => a + x.t, 0) + training.reduce((a, x) => a + x.t, 0);
+  const P = subjects.reduce((a, x) => a + x.p, 0) + training.reduce((a, x) => a + x.p, 0) + extras.reduce((a, x) => a + x.p, 0);
   return {
-    user: u, min: getMin_(), p: P, t: T, subjects, extras,
+    user: u, min: getMin_(), p: P, t: T, subjects, extras, training,
     overall: T ? Math.round(Math.min(100, P * 100 / T) * 10) / 10 : null
   };
 }
