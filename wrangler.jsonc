@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "bist-training-attendance",
+  "name": "bist-aiml-attendence-th",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-15",
   "compatibility_flags": [
@@ -14,7 +14,7 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "bist-training-attendance"
+      "service": "bist-aiml-attendence-th"
     }
   ],
   "images": {
