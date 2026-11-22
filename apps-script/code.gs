@@ -881,6 +881,19 @@ function syncTrainingShare_(newWorkbookId) {
     };
     write('Classes', ['ClassId', 'Branch', 'Semester', 'Section', 'SpreadsheetId', 'URL', 'FileName'], classRows.map(r => r.slice(0, 7)));
     write('Subjects', ['ClassId', 'Subject', 'SheetName', 'Teacher', 'Type', 'PriorTotal'], subjectRows);
+    // A plain-language first tab so the HOD can see at a glance what is being shared.
+    const sessionsOf = {};
+    subjectRows.forEach(r => { (sessionsOf[r[0]] = sessionsOf[r[0]] || []).push(r[1]); });
+    write('Overview', ['Class', 'Branch', 'Semester', 'Section', 'Training sessions', 'Workbook name', 'Open workbook'],
+      classRows.map(r => [r[1] + ' • Sem ' + r[2] + ' • Sec ' + String(r[3]).toUpperCase(), r[1], r[2], r[3], (sessionsOf[r[0]] || []).join(', ') || '(none yet)', r[6], r[5]]));
+    try {
+      const overview = reg.getSheetByName('Overview');
+      overview.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#0b3558').setFontColor('#ffffff');
+      overview.setFrozenRows(1);
+      overview.autoResizeColumns(1, 6);
+      reg.setActiveSheet(overview);
+      reg.moveActiveSheet(1);
+    } catch (e) { Logger.log('Overview formatting skipped: ' + errorText_(e)); }
     if (email) {
       out.registry = shareFileWithEmail_(reg.getId(), email);
       if (newWorkbookId) shareFileWithEmail_(newWorkbookId, email);
@@ -891,6 +904,26 @@ function syncTrainingShare_(newWorkbookId) {
     Logger.log('Training share sync failed: ' + out.error);
   }
   return out;
+}
+
+/**
+ * Makes sure every class workbook that has training sessions already contains its Master sheet before the
+ * HOD opens it. Time-boxed; whatever is left is finished by the background trigger.
+ */
+function buildMissingMasters_(budgetMs) {
+  const t0 = Date.now();
+  let built = 0;
+  try {
+    const withTraining = {};
+    rows_('Subjects').forEach(r => { if (r[4] === 'TRAINING') withTraining[r[0]] = true; });
+    classes_().forEach(c => {
+      if (!withTraining[c.id] || Date.now() - t0 > budgetMs) return;
+      try {
+        if (!ss_(c.id).getSheetByName('Master')) { compileClass_(c.id); built++; }
+      } catch (e) { Logger.log('Master build skipped for ' + c.id + ': ' + errorText_(e)); markDirty_(c.id); }
+    });
+  } catch (e) { Logger.log('Master build pass failed: ' + errorText_(e)); }
+  return built;
 }
 
 function getTrainingShare(token) {
@@ -921,6 +954,7 @@ function setHodShareEmail(token, email) {
   });
   ensureCompileTriggers_();
   const info = getTrainingShare(token);
+  info.mastersBuilt = buildMissingMasters_(90000);
   info.sync = sync;
   info.workbooks = workbooks;
   info.sharedWorkbooks = workbooks.filter(w => w.ok).length;
@@ -933,6 +967,7 @@ function resyncTrainingShare(token) {
   auth_(token, ['TRAINING_HEAD']);
   const sync = syncTrainingShare_();
   const info = getTrainingShare(token);
+  info.mastersBuilt = buildMissingMasters_(90000);
   info.sync = sync;
   return info;
 }
