@@ -54,3 +54,12 @@ The first time, run `authorizeEmailReportAutomation` (or any function) once in t
   - after deploying a new `code.gs`, run any function once in the Apps Script editor (for example `authorizeEmailReportAutomation`) and accept the permissions, then press the button again.
 - **HOD does not see training attendance:** check the HOD Setup screen — it shows which of your classes did not match (branch, semester and section must be spelled the same in both systems), then press **Pull Now**.
 - **File names:** every class workbook here is named `Training Attendance - <Branch> - Sem <n> - Sec <x>` so it is never confused with the HOD's `Attendance - …` workbooks. Older workbooks are renamed automatically the next time you press *Share with HOD* (or create a class).
+
+### What the HOD sees in their Google Drive
+
+After **Share with HOD**, the HOD's **Shared with me** contains:
+
+- **Training Attendance Share Registry** - opens on an **Overview** tab listing every class, its training sessions and a link to its workbook (plus the Classes and Subjects tabs the HOD app reads);
+- one **Training Attendance - <Branch> - Sem <n> - Sec <x>** workbook per class, each with a sheet per training session (DSA, ...) and a finished **Master** sheet. Missing Master sheets are built while sharing.
+
+The HOD then links the registry in their app, ticks the classes to pull, and compiles them into their own Master sheets.

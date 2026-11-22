@@ -29,3 +29,21 @@ Redeploy `code.gs` as a new web app version after updating. No new OAuth scopes 
 2. Each branch lists how many classes matched and names any that did not (branch, semester and section must match exactly). Create or rename the class here to match.
 3. The Training Head must have shared the registry **and** the class workbooks with this Google account; a "could not be read" warning appears above the Master table otherwise.
 4. Press **Pull Now**. After linking, the 10-minute background refresh is installed automatically (no need to run `setupTriggers`), and opening a class Master report also checks for new training attendance and new training sessions straight away.
+
+### Choosing which classes to pull
+
+In **Setup → Training Attendance Link** the HOD sees every class in the Training Head's registry together with its training sessions (DSA, Aptitude, ...).
+
+1. Tick the classes you want. For each one, choose **which of your own classes** it is compiled into (a same-name class is pre-selected, but any class can be chosen, so different spellings never block it).
+2. Press **Pull & Compile**. A confirmation lists exactly what will be pulled.
+3. Every training session of the chosen classes is read (read-only) and compiled straight into that class's **Master** sheet. The result shows the sessions that came in and how many of your students were matched by enrollment number; a warning appears when none matched.
+
+The choice is remembered, and later training attendance is refreshed automatically (every ~10 minutes, or when the class Master report is opened).
+
+### Training tabs inside your class workbook
+
+Each pull also copies every pulled training session into that class's workbook as its own tab (for example **Training DSA**, **Training Aptitude**) with the same date-wise P/A layout as the Training Head's sheet. These tabs are read-only snapshots (purple tab, edit warning) that are refreshed on every pull and every automatic refresh; the real data stays in the Training Head's workbook. The Master sheet is compiled as before and shows each session as a `... (Training)` column.
+
+- Tabs you create yourself are never overwritten or deleted, even if they are called "Training ...".
+- If you un-tick a class or unlink the registry, its Training tabs are removed again.
+
