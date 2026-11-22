@@ -22,6 +22,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TRAINING_REGISTRY_KEY = 'TRAINING_REGISTRY_ID';   // Spreadsheet the Training Head shared with the HOD account
 const TRAINING_BRANCHES_KEY = 'TRAINING_BRANCHES';      // legacy: JSON array of branch keys pulled branch-wide
 const TRAINING_LINKS_KEY = 'TRAINING_LINKS';            // JSON { hodClassId: trainingClassId } chosen one by one by the HOD
+const TRAINING_DAILY_HOUR = 17;                         // 5 PM (project time zone): daily pull of all linked classes
+const TRAINING_LAST_PULL_KEY = 'TRAINING_LAST_PULL';    // JSON { at, source, classes, sessions, warnings } of the last all-class pull
 const TRAINING_SYNC_KEY = 'TRAINING_SYNC';              // JSON { fileId: lastUpdatedMs } used to detect new training data
 
 let REG_ = null;
@@ -255,10 +257,11 @@ function nightlyCompile() {
 function setupTriggers() {
   ScriptApp.getProjectTriggers().forEach(t => {
     const f = t.getHandlerFunction();
-    if (f === 'autoCompile' || f === 'nightlyCompile') ScriptApp.deleteTrigger(t);
+    if (f === 'autoCompile' || f === 'nightlyCompile' || f === 'dailyTrainingPull') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('autoCompile').timeBased().everyMinutes(10).create();
   ScriptApp.newTrigger('nightlyCompile').timeBased().everyDays(1).atHour(2).create();
+  if (trainingRegistryId_()) ScriptApp.newTrigger('dailyTrainingPull').timeBased().everyDays(1).atHour(TRAINING_DAILY_HOUR).create();
   const recipient = PropertiesService.getScriptProperties().getProperty(EMAIL_REPORT_RECIPIENT);
   if (recipient) installEmailReportTriggers_(emailReportSettings_());
   else ScriptApp.getProjectTriggers().forEach(t => {
@@ -1169,6 +1172,8 @@ function ensureCompileTriggers_() {
     const have = ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction());
     if (!have.includes('autoCompile')) ScriptApp.newTrigger('autoCompile').timeBased().everyMinutes(10).create();
     if (!have.includes('nightlyCompile')) ScriptApp.newTrigger('nightlyCompile').timeBased().everyDays(1).atHour(2).create();
+    // Apps Script fires an "at hour 17" trigger at some point between 5 PM and 6 PM.
+    if (trainingRegistryId_() && !have.includes('dailyTrainingPull')) ScriptApp.newTrigger('dailyTrainingPull').timeBased().everyDays(1).atHour(TRAINING_DAILY_HOUR).create();
     return true;
   } catch (e) {
     Logger.log('Could not install compile triggers: ' + (e.message || e));
@@ -1266,10 +1271,12 @@ function trainingIdFromInput_(input) {
 function getTrainingLink(token) {
   auth_(token, ['HOD']);
   const id = trainingRegistryId_();
-  const out = { linked: false, registryUrl: '', registryName: '', branches: [], enabled: trainingBranches_(), error: '', account: '' };
+  const out = { linked: false, registryUrl: '', registryName: '', branches: [], enabled: trainingBranches_(), error: '', account: '', lastPull: null, daily: { enabled: false, hour: TRAINING_DAILY_HOUR } };
   try { out.account = Session.getEffectiveUser().getEmail(); } catch (e) {}
   if (!id) return out;
   out.linked = true;
+  try { out.lastPull = JSON.parse(PropertiesService.getScriptProperties().getProperty(TRAINING_LAST_PULL_KEY) || 'null'); } catch (e) {}
+  try { out.daily.enabled = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'dailyTrainingPull'); } catch (e) {}
   try {
     const reg = SpreadsheetApp.openById(id);
     out.registryName = reg.getName();
@@ -1384,7 +1391,10 @@ function unlinkTrainingRegistry(token) {
   Object.keys(trainingLinks_()).forEach(hid => {
     try { removeTrainingMirrors_(ss_(hid), []); } catch (e) { Logger.log('Mirror cleanup skipped for ' + hid + ': ' + (e.message || e)); }
   });
-  [TRAINING_REGISTRY_KEY, TRAINING_BRANCHES_KEY, TRAINING_LINKS_KEY, TRAINING_SYNC_KEY].forEach(k => props.deleteProperty(k));
+  [TRAINING_REGISTRY_KEY, TRAINING_BRANCHES_KEY, TRAINING_LINKS_KEY, TRAINING_SYNC_KEY, TRAINING_LAST_PULL_KEY].forEach(k => props.deleteProperty(k));
+  try {
+    ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'dailyTrainingPull') ScriptApp.deleteTrigger(t); });
+  } catch (e) { Logger.log('Could not remove the daily training trigger: ' + (e.message || e)); }
   bustTraining_();
   classes_().forEach(c => { markDirty_(c.id); bumpVer_(c.id); });
   return getTrainingLink(token);
@@ -1397,6 +1407,32 @@ function unlinkTrainingRegistry(token) {
  */
 function syncTrainingNow(token, classId) {
   auth_(token, ['HOD']);
+  return pullTrainingClasses_(classId, 'manual');
+}
+
+/**
+ * Runs by itself every day around 5 PM: pulls every linked class (all branches) and compiles it, with no one
+ * signed in. Quiet when training is not linked. A failing class never stops the others.
+ */
+function dailyTrainingPull() {
+  if (!trainingRegistryId_()) return null;
+  try { return pullTrainingClasses_('', 'daily'); }
+  catch (e) { Logger.log('Daily training pull failed: ' + (e.message || e)); return null; }
+}
+
+function recordTrainingPull_(source, results) {
+  try {
+    PropertiesService.getScriptProperties().setProperty(TRAINING_LAST_PULL_KEY, JSON.stringify({
+      at: new Date().toISOString(), source,
+      classes: results.length,
+      sessions: results.reduce((n, r) => n + r.sessions.length, 0),
+      warnings: results.filter(r => !r.ok || (r.trainingStudents > 0 && r.matchedStudents === 0)).length
+    }));
+  } catch (e) { Logger.log('Could not record the pull: ' + (e.message || e)); }
+}
+
+function pullTrainingClasses_(classId, source) {
+  if (source === 'manual') ensureCompileTriggers_(); // also installs the 5 PM trigger for setups linked before it existed
   bustTraining_();
   const list = classId ? [cls_(classId)] : classes_();
   const t0 = Date.now();
@@ -1433,6 +1469,7 @@ function syncTrainingNow(token, classId) {
   });
   const out = { classes: results.length, results };
   if (classId) out.summary = lastSummary;
+  else recordTrainingPull_(source, results);
   return out;
 }
 

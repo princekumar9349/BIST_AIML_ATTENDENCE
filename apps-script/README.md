@@ -47,3 +47,10 @@ Each pull also copies every pulled training session into that class's workbook a
 - Tabs you create yourself are never overwritten or deleted, even if they are called "Training ...".
 - If you un-tick a class or unlink the registry, its Training tabs are removed again.
 
+
+### One-tap update and the automatic 5 PM refresh
+
+- **Update All Branches Now** (top of the Training Attendance Link card) pulls every class you have already ticked and saved, across all branches, and compiles each one. No selection is needed after the first time.
+- **Every day around 5 PM** (project time zone, Asia/Kolkata) the same update runs by itself. Apps Script starts an "at 5 PM" trigger at some point between 5:00 and 6:00 PM. The trigger is installed automatically when you link the registry or press any pull button, and removed if you unlink. The card shows whether it is on and when the last update ran, manual or automatic.
+- Besides the daily run, new training attendance is still picked up about every 10 minutes and whenever a class Master report is opened.
+
