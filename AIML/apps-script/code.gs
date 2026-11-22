@@ -48,7 +48,7 @@ function apiMethod_(name) {
     getAttendanceSheet, saveAttendance, getAbsentees,
     getSummary, getSummaryByDateRange, exportAttendanceRangeXlsx, forceRecompile, getSettings, setMinPercent,
     getMyAttendance, getEmailReportSettings, setEmailReportSettings,
-    getTrainingLink, linkTrainingRegistry, setTrainingBranches, setTrainingClassLinks, unlinkTrainingRegistry, syncTrainingNow,
+    getTrainingLink, linkTrainingRegistry, setTrainingBranches, setTrainingClassLinks, unlinkTrainingRegistry, syncTrainingNow, diagnoseTraining,
     sendTestAttendanceEmail, sendDefaulterReminders
   };
   return Object.prototype.hasOwnProperty.call(methods, name) ? methods[name] : null;
@@ -1200,13 +1200,19 @@ function checkRegistryChanged_() {
 /* ---------- read-only mirror tabs: "Training DSA", "Training Aptitude", ... in the HOD's class workbook ---------- */
 
 const TRAINING_MIRROR = 'TRAINING_MIRROR'; // protection description that marks a tab as a managed mirror
+const TRAINING_MIRROR_COLOR = '#7c3aed';   // purple tab colour (second marker, survives a half-finished first run)
+
+function errText_(e) { return String((e && e.message) || e || 'Unknown error').replace(/^Exception:\s*/i, '').slice(0, 200); }
 
 function trainingMirrorName_(subject) {
   return ('Training ' + String(subject)).replace(/[\[\]\*\?\:\/\\]/g, '').trim().slice(0, 99);
 }
 
 function isTrainingMirror_(sheet) {
-  try { return sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET).some(p => p.getDescription() === TRAINING_MIRROR); }
+  try {
+    if (sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET).some(p => p.getDescription() === TRAINING_MIRROR)) return true;
+  } catch (e) { /* fall through to the colour check */ }
+  try { return typeof sheet.getTabColor === 'function' && String(sheet.getTabColor() || '').toLowerCase() === TRAINING_MIRROR_COLOR; }
   catch (e) { return false; }
 }
 
@@ -1228,35 +1234,43 @@ function removeTrainingMirrors_(ss, keepNames) {
  */
 function mirrorTrainingTabs_(ss, training) {
   const names = [];
+  const fail = (what, e) => { if (!names.error) names.error = what + ': ' + errText_(e); Logger.log('Training mirror ' + what + ' failed: ' + errText_(e)); };
   try {
     training.rows.forEach(sr => {
-      const source = training.ss.getSheetByName(sr[2]);
-      if (!source) return;
-      const values = source.getDataRange().getDisplayValues();
-      if (!values.length) return;
-      const name = trainingMirrorName_(sr[1]);
-      let tab = ss.getSheetByName(name);
-      if (tab && !isTrainingMirror_(tab)) { Logger.log('Mirror skipped, a tab named "' + name + '" already exists'); return; }
-      if (!tab) tab = ss.insertSheet(name);
-      tab.clear();
-      const width = Math.max.apply(null, values.map(r => r.length));
-      const rows = values.map(r => r.concat(new Array(width - r.length).fill('')));
-      tab.getRange(1, 1, rows.length, 2).setNumberFormat('@');
-      tab.getRange(1, 1, rows.length, width).setValues(safeSheetRows_(rows));
-      tab.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#eef2f7');
-      tab.setFrozenRows(1);
-      tab.setFrozenColumns(2);
-      tab.setTabColor('#7c3aed');
-      tab.getRange('A1').setNote('Read-only copy of the Training Head\'s "' + sr[1] + '" attendance. It is refreshed every time training is pulled. Edit it in the Training Head\'s workbook, not here.');
-      if (!isTrainingMirror_(tab)) {
-        const protection = tab.protect();
-        protection.setDescription(TRAINING_MIRROR);
-        protection.setWarningOnly(true);
-      }
-      names.push(name);
+      try {
+        const source = training.ss.getSheetByName(sr[2]);
+        if (!source) { fail(sr[1], 'sheet "' + sr[2] + '" was not found in the Training Head workbook'); return; }
+        const values = source.getDataRange().getDisplayValues();
+        if (!values.length) return;
+        const name = trainingMirrorName_(sr[1]);
+        let tab = ss.getSheetByName(name);
+        if (tab && !isTrainingMirror_(tab)) { fail(sr[1], 'a tab named "' + name + '" already exists in your workbook, rename or delete it'); return; }
+        if (!tab) {
+          tab = ss.insertSheet(name);
+          tab.setTabColor(TRAINING_MIRROR_COLOR); // mark it as ours immediately, before anything can fail
+        }
+        tab.clear();
+        const width = Math.max.apply(null, values.map(r => r.length));
+        const rows = values.map(r => r.concat(new Array(width - r.length).fill('')));
+        tab.getRange(1, 1, rows.length, 2).setNumberFormat('@');
+        tab.getRange(1, 1, rows.length, width).setValues(safeSheetRows_(rows));
+        tab.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#eef2f7');
+        tab.setFrozenRows(1);
+        tab.setFrozenColumns(2);
+        tab.setTabColor(TRAINING_MIRROR_COLOR);
+        names.push(name);
+        try {
+          tab.getRange('A1').setNote('Read-only copy of the Training Head\'s "' + sr[1] + '" attendance. It is refreshed every time training is pulled. Edit it in the Training Head\'s workbook, not here.');
+          if (!tab.getProtections(SpreadsheetApp.ProtectionType.SHEET).some(p => p.getDescription() === TRAINING_MIRROR)) {
+            const protection = tab.protect();
+            protection.setDescription(TRAINING_MIRROR);
+            protection.setWarningOnly(true);
+          }
+        } catch (e) { Logger.log('Mirror tab "' + name + '" was written but could not be protected: ' + errText_(e)); }
+      } catch (e) { fail(sr[1], e); }
     });
     removeTrainingMirrors_(ss, names);
-  } catch (e) { Logger.log('Training mirror tabs failed: ' + (e.message || e)); }
+  } catch (e) { fail('tabs', e); }
   return names;
 }
 
@@ -1300,11 +1314,14 @@ function getTrainingLink(token) {
       const auto = hodClasses.find(c => branchKey_(c.branch) === branchKey_(r[1]) && String(c.sem) === String(r[2]) && sameSection_(c.section, r[3]));
       const explicit = Object.keys(links).find(hid => links[hid] === r[0]) || '';
       const legacy = !explicit && auto && out.enabled.includes(branchKey_(r[1])) ? auto.id : '';
+      // No class with the same semester/section? Suggest the HOD's only class in that branch, if there is exactly one.
+      const sameBranch = hodClasses.filter(c => branchKey_(c.branch) === branchKey_(r[1]));
+      const loose = !auto && sameBranch.length === 1 ? sameBranch[0].id : '';
       return {
         id: r[0], branch: r[1], sem: r[2], section: String(r[3]).toUpperCase(),
         label: r[1] + ' • Sem ' + r[2] + ' • Sec ' + String(r[3]).toUpperCase(),
         sessions: allSubjects.filter(sr => sr[0] === r[0]).map(sr => sr[1]),
-        suggested: auto ? auto.id : '', linkedTo: explicit || legacy
+        suggested: auto ? auto.id : loose, suggestedLoose: !auto && Boolean(loose), linkedTo: explicit || legacy
       };
     });
   } catch (e) {
@@ -1385,6 +1402,63 @@ function setTrainingClassLinks(token, links) {
   return getTrainingLink(token);
 }
 
+/**
+ * "Check connection": walks the whole chain (registry, classes, sessions, sharing, student matching, tabs,
+ * daily job) and reports each step with a plain-language fix, so a missing training tab is never a mystery.
+ */
+function diagnoseTraining(token) {
+  auth_(token, ['HOD']);
+  const steps = [];
+  const add = (ok, title, detail, fix) => steps.push({ ok: Boolean(ok), title, detail: detail || '', fix: ok ? '' : (fix || '') });
+  const id = trainingRegistryId_();
+  if (!id) {
+    add(false, 'Training registry linked', 'Not linked yet.', 'Paste the registry link from the Training Head and press Link Training Registry.');
+    return { ok: false, steps };
+  }
+  try {
+    add(true, 'Training registry can be opened', '“' + SpreadsheetApp.openById(id).getName() + '”');
+  } catch (e) {
+    add(false, 'Training registry can be opened', errText_(e), 'Ask the Training Head to press Share with HOD again, using this Google account.');
+    return { ok: false, steps };
+  }
+  bustTraining_();
+  const tClasses = trainingRows_('Classes');
+  const tSessions = trainingRows_('Subjects').filter(r => r[4] === 'TRAINING');
+  add(tClasses.length, 'Training Head classes found', tClasses.map(r => r[1] + ' Sem ' + r[2] + ' Sec ' + String(r[3]).toUpperCase()).join(', ') || 'None', 'The Training Head must create a class and press Refresh registry (Classes → Share with HOD).');
+  add(tSessions.length, 'Training sessions found', tSessions.map(r => r[1]).join(', ') || 'None', 'The Training Head must add a training session (Sessions tab) and press Refresh registry.');
+  const chosen = classes_().filter(c => trainingSource_(c.id));
+  if (!chosen.length) {
+    add(false, 'A class is chosen to pull', 'No Training Head class is linked to any of your classes yet.', 'Tick the Training Head class in the list, choose which of your classes it belongs to, then press Pull & Compile.');
+  }
+  chosen.forEach(c => {
+    const label = label_(c);
+    const src = trainingSource_(c.id);
+    let book = null;
+    try { book = trainingSs_(src); add(true, label + ': training workbook can be opened'); }
+    catch (e) { add(false, label + ': training workbook can be opened', errText_(e), 'Ask the Training Head to press Share with HOD again so this account can view the workbook.'); return; }
+    const missing = src.subjects.filter(sr => !book.getSheetByName(sr[2])).map(sr => sr[1]);
+    add(src.subjects.length && !missing.length, label + ': training sessions', src.subjects.map(sr => sr[1]).join(', ') || 'None found',
+      missing.length ? 'These sessions have no sheet in the Training Head workbook: ' + missing.join(', ') : 'The Training Head has no training session in this class yet.');
+    let matched = 0, total = studentRows_(c.id).length;
+    try {
+      const seen = {};
+      src.subjects.forEach(sr => Object.keys(sheetStats_(book, sr).p).forEach(e => { seen[e] = true; }));
+      matched = studentRows_(c.id).filter(r => seen[r[0]]).length;
+      add(matched > 0, label + ': students matched by enrollment number', matched + ' of ' + total + ' of your students', 'No enrollment number matches. Use the same enrollment numbers in both systems.');
+    } catch (e) { add(false, label + ': students matched by enrollment number', errText_(e), 'Press Pull & Compile and try again.'); }
+    const mine = ss_(c.id);
+    add(Boolean(mine.getSheetByName('Master')), label + ': Master sheet', '', 'Press Pull & Compile to build it.');
+    const wanted = src.subjects.map(sr => trainingMirrorName_(sr[1]));
+    const absent = wanted.filter(n => !mine.getSheetByName(n));
+    add(wanted.length > 0 && !absent.length, label + ': Training tabs in your workbook', wanted.filter(n => mine.getSheetByName(n)).join(', ') || 'None yet',
+      absent.length ? 'Missing: ' + absent.join(', ') + '. Press Pull & Compile (or Update All Branches Now).' : '');
+  });
+  let daily = false;
+  try { daily = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'dailyTrainingPull'); } catch (e) { /* no trigger scope */ }
+  add(daily, 'Automatic daily update (5 PM)', daily ? 'On' : 'Off', 'It switches on when you press Pull & Compile or Update All Branches Now.');
+  return { ok: steps.every(x => x.ok), steps };
+}
+
 function unlinkTrainingRegistry(token) {
   auth_(token, ['HOD']);
   const props = PropertiesService.getScriptProperties();
@@ -1441,7 +1515,7 @@ function pullTrainingClasses_(classId, source) {
   list.forEach(c => {
     const src = trainingSource_(c.id);
     if (!src) return;
-    const item = { classId: c.id, label: label_(c), sessions: src.subjects.map(r => r[1]), tabs: [], ok: true, error: '', matchedStudents: 0, trainingStudents: 0, students: 0 };
+    const item = { classId: c.id, label: label_(c), sessions: src.subjects.map(r => r[1]), tabs: [], tabsError: '', ok: true, error: '', matchedStudents: 0, trainingStudents: 0, students: 0 };
     if (Date.now() - t0 > 200000) {
       item.ok = false; item.error = 'Skipped because of the time limit. Press Pull again.';
       markDirty_(c.id); bumpVer_(c.id);
@@ -1456,6 +1530,7 @@ function pullTrainingClasses_(classId, source) {
       lastSummary = r;
       const info = r.training || {};
       item.tabs = info.tabs || [];
+      item.tabsError = info.tabsError || '';
       item.matchedStudents = info.matchedStudents || 0;
       item.trainingStudents = info.trainingStudents || 0;
       item.students = info.studentsTotal || 0;
@@ -1579,7 +1654,8 @@ function compileClass_(classId) {
   sum.setFrozenColumns(3);
 
   const mirroredTabs = trn.length && training.ss ? mirrorTrainingTabs_(ss, training) : [];
-  const result = { table: out, url: ss.getUrl() + '#gid=' + sum.getSheetId(), min: getMin_(), training: { linked: trn.length > 0, sessions: trn.length, names: trn.map(r => r[1]), tabs: mirroredTabs, matchedStudents: stu.filter(r => trainingEnrollments[r[0]]).length, trainingStudents: Object.keys(trainingEnrollments).length, studentsTotal: stu.length, error: training.error } };
+  const tabsError = mirroredTabs.error || '';
+  const result = { table: out, url: ss.getUrl() + '#gid=' + sum.getSheetId(), min: getMin_(), training: { linked: trn.length > 0, sessions: trn.length, names: trn.map(r => r[1]), tabs: mirroredTabs, tabsError, matchedStudents: stu.filter(r => trainingEnrollments[r[0]]).length, trainingStudents: Object.keys(trainingEnrollments).length, studentsTotal: stu.length, error: training.error } };
   try { cache_().put('sum:' + classId + ':' + ver_(classId), pack_(result), 1800); } catch (e) {}
   return result;
 }
