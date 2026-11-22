@@ -54,3 +54,10 @@ Each pull also copies every pulled training session into that class's workbook a
 - **Every day around 5 PM** (project time zone, Asia/Kolkata) the same update runs by itself. Apps Script starts an "at 5 PM" trigger at some point between 5:00 and 6:00 PM. The trigger is installed automatically when you link the registry or press any pull button, and removed if you unlink. The card shows whether it is on and when the last update ran, manual or automatic.
 - Besides the daily run, new training attendance is still picked up about every 10 minutes and whenever a class Master report is opened.
 
+
+### If the training tabs do not appear: Check connection
+
+Press **Check connection** on the Training Attendance Link card. It tests each step and says in plain words what to do: the registry can be opened, the Training Head's classes and sessions exist, each ticked class's workbook can be opened, how many of your students match by enrollment number, and whether the Master sheet, the `Training ...` tabs and the daily update are in place.
+
+The most common cause is that the two classes have different names (for example the Training Head's *Sem 5 Sec AT* against your *Sem 3 Sec A*). Names never have to match: tick the Training Head's class and choose which of your classes it belongs to. If you have only one class in that branch it is suggested for you as "(same branch)".
+

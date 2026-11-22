@@ -18,6 +18,7 @@ export default function TrainingLink() {
   const [picks, setPicks] = useState({}); // trainingClassId -> { on, hod }
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState(null);
+  const [diag, setDiag] = useState(null);
 
   useEffect(() => {
     if (!info?.trainingClasses) return;
@@ -85,6 +86,14 @@ export default function TrainingLink() {
       const bad = (r.results || []).filter((x) => !x.ok || (x.trainingStudents > 0 && x.matchedStudents === 0)).length;
       toast(!r.classes ? "No class is linked yet. Tick classes below and press Pull & Compile once." : bad ? "Updated with warnings — see the details below." : `Updated ${r.classes} class${r.classes === 1 ? "" : "es"} from all branches.`);
     } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
+  };
+
+  // Plain-language checklist of the whole chain, so a missing tab is never a mystery.
+  const check = async () => {
+    setBusy(true);
+    setDiag(null);
+    try { setDiag(await mutate("diagnoseTraining", [], { timeout: 120000, invalidate: false })); }
+    catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   };
 
   const unlink = async () => {
@@ -160,7 +169,7 @@ export default function TrainingLink() {
                     <label className="lbl" style={{ marginTop: 0 }}>Compile into your class</label>
                     <select className="inp" value={pick.hod} onChange={(e) => setPick(t.id, { hod: e.target.value })}>
                       <option value="">— choose your class —</option>
-                      {hodClasses.map((h) => <option key={h.id} value={h.id}>{h.label}{h.id === t.suggested ? "  (same name)" : ""}</option>)}
+                      {hodClasses.map((h) => <option key={h.id} value={h.id}>{h.label}{h.id === t.suggested ? (t.suggestedLoose ? "  (same branch)" : "  (same name)") : ""}</option>)}
                     </select>
                   </div>
                 )}
@@ -183,6 +192,7 @@ export default function TrainingLink() {
                   <div key={r.classId} className="card" style={{ background: good ? "var(--okb)" : "var(--warnb)", color: good ? "var(--ok)" : "var(--warn)", fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>
                     <b>{r.label}</b>: {r.sessions.length} training session{r.sessions.length === 1 ? "" : "s"} ({r.sessions.join(", ") || "none"}) compiled into the Master sheet.
                     {r.tabs?.length > 0 && <div style={{ fontWeight: 600, marginTop: 3 }}>Tabs added to this class's workbook: {r.tabs.join(", ")} (read-only copies).</div>}
+                    {r.tabsError && <div style={{ marginTop: 4, color: "var(--bad)" }}>Could not add the training tab: {r.tabsError}</div>}
                     <div style={{ fontWeight: 600, marginTop: 3 }}>{r.matchedStudents} of {r.students} of your students have training attendance.</div>
                     {noMatch && <div style={{ marginTop: 4 }}>No enrollment numbers match between the two systems — students must have the same enrollment numbers in both.</div>}
                     {r.error && <div style={{ marginTop: 4 }}>{r.error}</div>}
@@ -192,7 +202,23 @@ export default function TrainingLink() {
             </div>
           )}
 
-          <button className="btn sm red" style={{ marginTop: 10 }} disabled={busy} onClick={unlink}>Unlink</button>
+          <button className="btn sm outline" style={{ marginTop: 10 }} disabled={busy} onClick={check}>{busy ? "Checking…" : "Check connection"}</button>
+          {diag && (
+            <div className="card" style={{ marginTop: 10, background: diag.ok ? "var(--okb)" : "var(--warnb)" }}>
+              <b style={{ color: diag.ok ? "var(--ok)" : "var(--warn)" }}>{diag.ok ? "Everything is connected." : "Found something to fix:"}</b>
+              {diag.steps.map((st, i) => (
+                <div key={i} style={{ marginTop: 8, fontSize: 12.5, display: "flex", gap: 8 }}>
+                  <span style={{ fontWeight: 900, color: st.ok ? "var(--ok)" : "var(--bad)" }}>{st.ok ? "✓" : "✗"}</span>
+                  <span>
+                    <b>{st.title}</b>
+                    {st.detail && <span style={{ color: "var(--mu)", fontWeight: 600 }}> — {st.detail}</span>}
+                    {st.fix && <span style={{ display: "block", color: "var(--bad)", fontWeight: 700 }}>What to do: {st.fix}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: 10 }}><button className="btn sm red" disabled={busy} onClick={unlink}>Unlink</button></div>
           <p className="hint" style={{ marginBottom: 0, marginTop: 8 }}>New training attendance is picked up automatically about every 10 minutes, or straight away when you open that class's Master report.</p>
         </>
       )}
