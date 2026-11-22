@@ -1,58 +1,88 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "../../lib/useQuery";
 import { mutate } from "../../lib/api";
-import { cacheKeyFor } from "../../lib/api";
-import { cacheSet } from "../../lib/cache";
 import { confirmDialog, toast } from "../../lib/ui-store";
 import { errorText } from "../../lib/utils";
 import { TTL } from "../../lib/config";
 
 /**
- * HOD: link the Training Head's shared registry once, then choose which branches to pull.
- * The HOD backend reads those branches' training workbooks (read-only) and compiles them into the
- * Master sheet automatically, so nothing needs to be exported or pasted by hand.
+ * HOD: link the Training Head's shared registry once, then choose which of THEIR classes to pull and
+ * which of YOUR classes each one is compiled into. Pulling reads every training session (DSA, Aptitude, ...)
+ * of the chosen classes (read-only) and compiles them into your Master sheet.
  */
 export default function TrainingLink() {
   const q = useQuery("getTrainingLink", [], { ttl: TTL.slow });
   const info = q.data;
   const [url, setUrl] = useState("");
-  const [picked, setPicked] = useState([]);
+  const [picks, setPicks] = useState({}); // trainingClassId -> { on, hod }
   const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState(null);
 
   useEffect(() => {
-    if (info) setPicked(info.enabled || []);
+    if (!info?.trainingClasses) return;
+    const next = {};
+    info.trainingClasses.forEach((t) => { next[t.id] = { on: Boolean(t.linkedTo), hod: t.linkedTo || t.suggested || "" }; });
+    setPicks(next);
   }, [info]);
 
-  const store = (data) => cacheSet(cacheKeyFor("getTrainingLink", []), data);
-  const run = async (fn, args, success) => {
-    setBusy(true);
-    try {
-      const res = await mutate(fn, args, { timeout: 60000 });
-      store(res.registryUrl !== undefined ? res : info);
-      if (success) toast(success);
-      return res;
-    } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
-  };
+  const classes = info?.trainingClasses || [];
+  const hodClasses = info?.hodClasses || [];
+  const selected = useMemo(() => classes.filter((t) => picks[t.id]?.on), [classes, picks]);
+  const setPick = (id, patch) => setPicks((p) => ({ ...p, [id]: { ...p[id], ...patch } }));
 
   const link = async () => {
     if (!url.trim()) return toast("Paste the Training registry link");
-    const res = await run("linkTrainingRegistry", [url.trim()], "Training registry linked. Now choose the branches to pull.");
-    if (res) setUrl("");
+    setBusy(true);
+    try { await mutate("linkTrainingRegistry", [url.trim()], { timeout: 60000 }); setUrl(""); toast("Training registry linked. Now choose the classes to pull."); }
+    catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   };
-  const saveBranches = () => run("setTrainingBranches", [picked.map((key) => info.branches.find((b) => b.key === key)?.branch || key)], "Training branches saved. The Master sheets are refreshing.");
+
+  const linksToSave = () => {
+    if (!selected.length) { toast("Tick at least one class to pull"); return null; }
+    if (selected.some((t) => !picks[t.id].hod)) { toast("Choose which of your classes each ticked class belongs to"); return null; }
+    const used = selected.map((t) => picks[t.id].hod);
+    if (new Set(used).size !== used.length) { toast("Two classes point to the same class of yours — each can receive one"); return null; }
+    return selected.map((t) => ({ trainingClassId: t.id, hodClassId: picks[t.id].hod }));
+  };
+
+  const saveOnly = async () => {
+    const links = linksToSave();
+    if (!links) return;
+    setBusy(true);
+    try { await mutate("setTrainingClassLinks", [links]); toast("Selection saved"); } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
+  };
+
+  const pull = async () => {
+    const links = linksToSave();
+    if (!links) return;
+    const describe = selected.map((t) => `${t.label} → ${hodClasses.find((h) => h.id === picks[t.id].hod)?.label || "?"} (${t.sessions.join(", ") || "no sessions yet"})`).join("; ");
+    const ok = await confirmDialog({ title: `Pull ${selected.length} training class${selected.length === 1 ? "" : "es"}?`, message: describe, confirmText: "Pull & compile" });
+    if (!ok) return;
+    setBusy(true);
+    setResults(null);
+    try {
+      await mutate("setTrainingClassLinks", [links]);
+      const r = await mutate("syncTrainingNow", [], { timeout: 180000 });
+      setResults(r.results || []);
+      const bad = (r.results || []).filter((x) => !x.ok || (x.trainingStudents > 0 && x.matchedStudents === 0)).length;
+      toast(bad ? "Pulled with warnings — see the details below." : `Pulled and compiled ${r.classes} class${r.classes === 1 ? "" : "es"} into the Master sheet.`);
+    } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
+  };
+
   const unlink = async () => {
     const ok = await confirmDialog({ title: "Unlink training attendance?", message: "Master sheets go back to main attendance only. Nothing is deleted in the Training Head's files.", confirmText: "Unlink", danger: true });
-    if (ok) run("unlinkTrainingRegistry", [], "Training registry unlinked");
+    if (!ok) return;
+    setBusy(true);
+    try { await mutate("unlinkTrainingRegistry", []); setResults(null); toast("Training registry unlinked"); } catch (e) { toast(errorText(e)); } finally { setBusy(false); }
   };
-  const toggle = (key) => setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
 
   return (
     <div className="card">
       <h3>Training Attendance Link</h3>
       <p className="hint">
-        The Training Head keeps training attendance in their own system and shares one registry sheet with this Google account
-        {info?.account ? <> (<b>{info.account}</b>)</> : ""}. Link it once, pick the branches, and the Master sheet shows main + training attendance together.
+        The Training Head keeps training attendance in their own system and shares a registry with this Google account
+        {info?.account ? <> (<b>{info.account}</b>)</> : ""}. Link it once, tick the classes you want, and pull: every training session of those classes is compiled into your Master sheet.
       </p>
 
       {q.loading && <div className="empty">Checking link…</div>}
@@ -62,7 +92,8 @@ export default function TrainingLink() {
         <>
           <label className="lbl">Training registry link (from the Training Head)</label>
           <input className="inp" placeholder="https://docs.google.com/spreadsheets/d/…" value={url} onChange={(e) => setUrl(e.target.value)} />
-          <button className="btn gold" style={{ marginTop: 10 }} disabled={busy} onClick={link}>{busy ? "Linking…" : "Link Training Registry"}</button>
+          <p className="hint" style={{ marginTop: 4 }}>In your Google Drive → <b>Shared with me</b> you will find “Training Attendance Share Registry”. Open it and copy its address.</p>
+          <button className="btn gold" style={{ marginTop: 6 }} disabled={busy} onClick={link}>{busy ? "Linking…" : "Link Training Registry"}</button>
         </>
       )}
 
@@ -75,32 +106,62 @@ export default function TrainingLink() {
               Linked to “{info.registryName}”. <a href={info.registryUrl} target="_blank" rel="noopener noreferrer">Open</a>
             </p>
           )}
-          <label className="lbl">Branches to pull into the Master sheet</label>
-          {info.branches.length ? (
-            <div style={{ display: "grid", gap: 8, margin: "6px 0" }}>
-              {info.branches.map((b) => (
-                <label key={b.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid var(--ln)", borderRadius: 10, background: "#fff", fontWeight: 800 }}>
-                  <input type="checkbox" checked={picked.includes(b.key)} onChange={() => toggle(b.key)} />
-                  <span style={{ flex: 1 }}>{b.branch}
-                    <small style={{ display: "block", color: "var(--mu)", fontWeight: 600 }}>
-                      {b.subjects} training session{b.subjects === 1 ? "" : "s"} • {b.matched} of {b.trainingClasses} class{b.trainingClasses === 1 ? "" : "es"} match yours by semester &amp; section
-                    </small>
-                    {b.unmatched?.length > 0 && (
-                      <small style={{ display: "block", color: "var(--warn)", fontWeight: 700, marginTop: 3 }}>
-                        Not matched: {b.unmatched.join(", ")} — create this class here with the same branch, semester and section.
-                      </small>
-                    )}
+
+          <label className="lbl">Which classes do you want to pull?</label>
+          {classes.length ? classes.map((t) => {
+            const pick = picks[t.id] || { on: false, hod: "" };
+            return (
+              <div key={t.id} style={{ border: "1px solid var(--ln)", borderRadius: 10, padding: 10, background: pick.on ? "var(--gold-light)" : "#fff", marginBottom: 8 }}>
+                <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+                  <input type="checkbox" style={{ width: 20, height: 20, flex: "none", marginTop: 2 }} checked={pick.on} onChange={(e) => setPick(t.id, { on: e.target.checked })} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b style={{ display: "block", fontSize: 13.5 }}>{t.label}</b>
+                    <span style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 4 }}>
+                      {t.sessions.length
+                        ? t.sessions.map((name) => <span className="tag extra" key={name}>{name}</span>)
+                        : <small style={{ color: "var(--mu)" }}>No training sessions created yet</small>}
+                    </span>
                   </span>
                 </label>
-              ))}
-            </div>
-          ) : <div className="empty">The registry has no classes yet.</div>}
+                {pick.on && (
+                  <div style={{ marginTop: 8 }}>
+                    <label className="lbl" style={{ marginTop: 0 }}>Compile into your class</label>
+                    <select className="inp" value={pick.hod} onChange={(e) => setPick(t.id, { hod: e.target.value })}>
+                      <option value="">— choose your class —</option>
+                      {hodClasses.map((h) => <option key={h.id} value={h.id}>{h.label}{h.id === t.suggested ? "  (same name)" : ""}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            );
+          }) : <div className="empty">The Training Head has not created any class yet.</div>}
+
           <div className="row2" style={{ marginTop: 10 }}>
-            <button className="btn gold" disabled={busy} onClick={saveBranches}>{busy ? "Saving…" : "Save Branches"}</button>
-            <button className="btn sec" disabled={busy} onClick={() => run("syncTrainingNow", [], "Training attendance refreshed")}>Pull Now</button>
+            <button className="btn gold" disabled={busy || !selected.length} onClick={pull}>{busy ? "Pulling…" : `Pull & Compile${selected.length ? ` (${selected.length})` : ""}`}</button>
+            <button className="btn sec" disabled={busy} onClick={saveOnly}>Save selection</button>
           </div>
+
+          {results && (
+            <div style={{ marginTop: 12 }}>
+              {results.length === 0 && <div className="card" style={{ background: "var(--warnb)", color: "var(--warn)", fontWeight: 700, fontSize: 12.5 }}>Nothing was pulled. Tick a class and press Pull again.</div>}
+              {results.map((r) => {
+                const noMatch = r.trainingStudents > 0 && r.matchedStudents === 0;
+                const good = r.ok && !noMatch;
+                return (
+                  <div key={r.classId} className="card" style={{ background: good ? "var(--okb)" : "var(--warnb)", color: good ? "var(--ok)" : "var(--warn)", fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>
+                    <b>{r.label}</b>: {r.sessions.length} training session{r.sessions.length === 1 ? "" : "s"} ({r.sessions.join(", ") || "none"}) compiled into the Master sheet.
+                    {r.tabs?.length > 0 && <div style={{ fontWeight: 600, marginTop: 3 }}>Tabs added to this class's workbook: {r.tabs.join(", ")} (read-only copies).</div>}
+                    <div style={{ fontWeight: 600, marginTop: 3 }}>{r.matchedStudents} of {r.students} of your students have training attendance.</div>
+                    {noMatch && <div style={{ marginTop: 4 }}>No enrollment numbers match between the two systems — students must have the same enrollment numbers in both.</div>}
+                    {r.error && <div style={{ marginTop: 4 }}>{r.error}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <button className="btn sm red" style={{ marginTop: 10 }} disabled={busy} onClick={unlink}>Unlink</button>
-          <p className="hint" style={{ marginBottom: 0, marginTop: 8 }}>New training attendance is picked up automatically about every 10 minutes, or immediately when you open a class Master report.</p>
+          <p className="hint" style={{ marginBottom: 0, marginTop: 8 }}>New training attendance is picked up automatically about every 10 minutes, or straight away when you open that class's Master report.</p>
         </>
       )}
     </div>

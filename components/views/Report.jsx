@@ -131,7 +131,13 @@ function ReportBody({ res, q, minPct, onlyLow, setOnlyLow, search, setSearch, dr
 
       {trainingInfo?.linked && (
         <div className="card" style={{ background: "var(--okb)", color: "var(--ok)", fontWeight: 800, fontSize: 12, padding: "9px 12px" }}>
-          Includes training attendance ({trainingInfo.sessions} session{trainingInfo.sessions === 1 ? "" : "s"}) from the Training Head. TOTAL and PERCENTAGE combine main + training.
+          Includes training attendance from the Training Head: {(trainingInfo.names || []).join(", ") || `${trainingInfo.sessions} session${trainingInfo.sessions === 1 ? "" : "s"}`}.
+          TOTAL and PERCENTAGE combine main + training.
+        </div>
+      )}
+      {trainingInfo?.linked && trainingInfo.trainingStudents > 0 && trainingInfo.matchedStudents === 0 && (
+        <div className="card" style={{ background: "var(--warnb)", color: "var(--warn)", fontWeight: 800, fontSize: 12, padding: "9px 12px" }}>
+          Training attendance was found, but none of its enrollment numbers match this class's students, so nothing was added. Check the enrollment numbers in both systems.
         </div>
       )}
       {trainingInfo?.error && (

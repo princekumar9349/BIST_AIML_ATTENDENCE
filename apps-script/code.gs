@@ -20,7 +20,8 @@ const REG_KEY = 'REG_ID_V4';
 const RESERVED = ['students', 'master'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TRAINING_REGISTRY_KEY = 'TRAINING_REGISTRY_ID';   // Spreadsheet the Training Head shared with the HOD account
-const TRAINING_BRANCHES_KEY = 'TRAINING_BRANCHES';      // JSON array of branch keys the HOD chose to pull
+const TRAINING_BRANCHES_KEY = 'TRAINING_BRANCHES';      // legacy: JSON array of branch keys pulled branch-wide
+const TRAINING_LINKS_KEY = 'TRAINING_LINKS';            // JSON { hodClassId: trainingClassId } chosen one by one by the HOD
 const TRAINING_SYNC_KEY = 'TRAINING_SYNC';              // JSON { fileId: lastUpdatedMs } used to detect new training data
 
 let REG_ = null;
@@ -45,7 +46,7 @@ function apiMethod_(name) {
     getAttendanceSheet, saveAttendance, getAbsentees,
     getSummary, getSummaryByDateRange, exportAttendanceRangeXlsx, forceRecompile, getSettings, setMinPercent,
     getMyAttendance, getEmailReportSettings, setEmailReportSettings,
-    getTrainingLink, linkTrainingRegistry, setTrainingBranches, unlinkTrainingRegistry, syncTrainingNow,
+    getTrainingLink, linkTrainingRegistry, setTrainingBranches, setTrainingClassLinks, unlinkTrainingRegistry, syncTrainingNow,
     sendTestAttendanceEmail, sendDefaulterReminders
   };
   return Object.prototype.hasOwnProperty.call(methods, name) ? methods[name] : null;
@@ -1047,6 +1048,11 @@ function sameSection_(a, b) { return norm_(a) === norm_(b); }
 
 function trainingRegistryId_() { return PropertiesService.getScriptProperties().getProperty(TRAINING_REGISTRY_KEY) || ''; }
 
+function trainingLinks_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(TRAINING_LINKS_KEY) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+
 function trainingBranches_() {
   try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(TRAINING_BRANCHES_KEY) || '[]'); }
   catch (e) { return []; }
@@ -1079,11 +1085,17 @@ function trainingSource_(classId) {
   let res = null;
   if (trainingRegistryId_()) {
     const c = cls_(classId);
-    if (trainingBranches_().includes(branchKey_(c.branch))) {
-      const tc = trainingRows_('Classes').find(r =>
-        branchKey_(r[1]) === branchKey_(c.branch) && String(r[2]) === String(c.sem) && sameSection_(r[3], c.section));
-      if (tc) res = { classId: tc[0], ssId: tc[4], subjects: trainingRows_('Subjects').filter(r => r[0] === tc[0] && r[4] === 'TRAINING') };
+    const explicit = trainingLinks_()[classId];
+    let tc = null;
+    if (explicit) {
+      // The HOD picked this Training Head class for this class, whatever the two are called.
+      tc = trainingRows_('Classes').find(r => r[0] === explicit) || null;
+    } else if (trainingBranches_().includes(branchKey_(c.branch))) {
+      // Older branch-wide mode: match by branch + semester + section.
+      tc = trainingRows_('Classes').find(r =>
+        branchKey_(r[1]) === branchKey_(c.branch) && String(r[2]) === String(c.sem) && sameSection_(r[3], c.section)) || null;
     }
+    if (tc) res = { classId: tc[0], ssId: tc[4], subjects: trainingRows_('Subjects').filter(r => r[0] === tc[0] && r[4] === 'TRAINING') };
   }
   MEMO_[memoKey] = res;
   return res;
@@ -1135,7 +1147,7 @@ function saveTrainingSyncMap_(map) { PropertiesService.getScriptProperties().set
 
 function refreshTrainingLinks_() {
   const id = trainingRegistryId_();
-  if (!id || !trainingBranches_().length) return;
+  if (!id || !(Object.keys(trainingLinks_()).length || trainingBranches_().length)) return;
   const map = trainingSyncMap_();
   const regTs = fileUpdated_(id);
   const registryChanged = map[id] !== regTs;
@@ -1180,6 +1192,69 @@ function checkRegistryChanged_() {
   return true;
 }
 
+/* ---------- read-only mirror tabs: "Training DSA", "Training Aptitude", ... in the HOD's class workbook ---------- */
+
+const TRAINING_MIRROR = 'TRAINING_MIRROR'; // protection description that marks a tab as a managed mirror
+
+function trainingMirrorName_(subject) {
+  return ('Training ' + String(subject)).replace(/[\[\]\*\?\:\/\\]/g, '').trim().slice(0, 99);
+}
+
+function isTrainingMirror_(sheet) {
+  try { return sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET).some(p => p.getDescription() === TRAINING_MIRROR); }
+  catch (e) { return false; }
+}
+
+/** Deletes mirror tabs that are no longer wanted. Tabs the HOD created themselves are never touched. */
+function removeTrainingMirrors_(ss, keepNames) {
+  let removed = 0;
+  ss.getSheets().forEach(sh => {
+    if (keepNames.includes(sh.getName()) || !isTrainingMirror_(sh)) return;
+    try { ss.deleteSheet(sh); removed++; } catch (e) { Logger.log('Could not remove mirror tab ' + sh.getName() + ': ' + (e.message || e)); }
+  });
+  return removed;
+}
+
+/**
+ * Copies every pulled training session into the HOD's class workbook as its own tab, with the same
+ * layout as the Training Head's sheet (Enrollment, Name, Previous Count, one column per date). The copy
+ * is a snapshot refreshed on every compile; the real data stays in the Training Head's workbook, so the
+ * tab carries an edit warning. Never throws: a failure here must not break the Master sheet.
+ */
+function mirrorTrainingTabs_(ss, training) {
+  const names = [];
+  try {
+    training.rows.forEach(sr => {
+      const source = training.ss.getSheetByName(sr[2]);
+      if (!source) return;
+      const values = source.getDataRange().getDisplayValues();
+      if (!values.length) return;
+      const name = trainingMirrorName_(sr[1]);
+      let tab = ss.getSheetByName(name);
+      if (tab && !isTrainingMirror_(tab)) { Logger.log('Mirror skipped, a tab named "' + name + '" already exists'); return; }
+      if (!tab) tab = ss.insertSheet(name);
+      tab.clear();
+      const width = Math.max.apply(null, values.map(r => r.length));
+      const rows = values.map(r => r.concat(new Array(width - r.length).fill('')));
+      tab.getRange(1, 1, rows.length, 2).setNumberFormat('@');
+      tab.getRange(1, 1, rows.length, width).setValues(safeSheetRows_(rows));
+      tab.getRange(1, 1, 1, width).setFontWeight('bold').setBackground('#eef2f7');
+      tab.setFrozenRows(1);
+      tab.setFrozenColumns(2);
+      tab.setTabColor('#7c3aed');
+      tab.getRange('A1').setNote('Read-only copy of the Training Head\'s "' + sr[1] + '" attendance. It is refreshed every time training is pulled. Edit it in the Training Head\'s workbook, not here.');
+      if (!isTrainingMirror_(tab)) {
+        const protection = tab.protect();
+        protection.setDescription(TRAINING_MIRROR);
+        protection.setWarningOnly(true);
+      }
+      names.push(name);
+    });
+    removeTrainingMirrors_(ss, names);
+  } catch (e) { Logger.log('Training mirror tabs failed: ' + (e.message || e)); }
+  return names;
+}
+
 function trainingIdFromInput_(input) {
   input = String(input || '').trim();
   const m = /\/d\/([a-zA-Z0-9_-]{20,})/.exec(input);
@@ -1211,6 +1286,20 @@ function getTrainingLink(token) {
       seen[key].subjects += trainingRows_('Subjects').filter(sr => sr[0] === r[0] && sr[4] === 'TRAINING').length;
     });
     out.branches = Object.keys(seen).sort().map(k => seen[k]);
+    const links = trainingLinks_();
+    const allSubjects = trainingRows_('Subjects').filter(sr => sr[4] === 'TRAINING');
+    out.hodClasses = hodClasses.map(c => ({ id: c.id, label: label_(c) }));
+    out.trainingClasses = trainingClasses.map(r => {
+      const auto = hodClasses.find(c => branchKey_(c.branch) === branchKey_(r[1]) && String(c.sem) === String(r[2]) && sameSection_(c.section, r[3]));
+      const explicit = Object.keys(links).find(hid => links[hid] === r[0]) || '';
+      const legacy = !explicit && auto && out.enabled.includes(branchKey_(r[1])) ? auto.id : '';
+      return {
+        id: r[0], branch: r[1], sem: r[2], section: String(r[3]).toUpperCase(),
+        label: r[1] + ' • Sem ' + r[2] + ' • Sec ' + String(r[3]).toUpperCase(),
+        sessions: allSubjects.filter(sr => sr[0] === r[0]).map(sr => sr[1]),
+        suggested: auto ? auto.id : '', linkedTo: explicit || legacy
+      };
+    });
   } catch (e) {
     out.error = 'Cannot open the Training registry. Ask the Training Head to share it with ' + (out.account || 'this account') + '. (' + String(e.message || e).slice(0, 120) + ')';
   }
@@ -1255,24 +1344,96 @@ function setTrainingBranches(token, branches) {
   return getTrainingLink(token);
 }
 
+/**
+ * The HOD chooses, class by class, which Training Head classes to pull and which of their own classes
+ * each one is compiled into. links = [{ trainingClassId, hodClassId }] replaces the previous choice.
+ */
+function setTrainingClassLinks(token, links) {
+  auth_(token, ['HOD']);
+  if (!trainingRegistryId_()) throw new Error('Link the Training registry first');
+  if (!Array.isArray(links)) links = [];
+  const trainingIds = {};
+  trainingRows_('Classes').forEach(r => { trainingIds[r[0]] = true; });
+  const hodIds = {};
+  classes_().forEach(c => { hodIds[c.id] = true; });
+  const map = {}, usedTraining = {};
+  links.forEach(l => {
+    const t = String((l && l.trainingClassId) || ''), h = String((l && l.hodClassId) || '');
+    if (!trainingIds[t]) throw new Error('A selected Training Head class no longer exists. Refresh and try again.');
+    if (!hodIds[h]) throw new Error('Choose which of your classes each training class belongs to.');
+    if (map[h]) throw new Error('Two training classes were mapped to the same class of yours. Each class can receive one.');
+    if (usedTraining[t]) throw new Error('A training class was selected twice.');
+    map[h] = t; usedTraining[t] = true;
+  });
+  const before = trainingLinks_();
+  Object.keys(before).filter(hid => !map[hid] && hodIds[hid]).forEach(hid => {
+    try { removeTrainingMirrors_(ss_(hid), []); } catch (e) { Logger.log('Mirror cleanup skipped for ' + hid + ': ' + (e.message || e)); }
+  });
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(TRAINING_LINKS_KEY, JSON.stringify(map));
+  props.deleteProperty(TRAINING_BRANCHES_KEY); // the explicit choice replaces the old branch-wide mode
+  bustTraining_();
+  ensureCompileTriggers_();
+  Object.keys(before).concat(Object.keys(map)).forEach(hid => { if (hodIds[hid]) { markDirty_(hid); bumpVer_(hid); } });
+  return getTrainingLink(token);
+}
+
 function unlinkTrainingRegistry(token) {
   auth_(token, ['HOD']);
   const props = PropertiesService.getScriptProperties();
-  [TRAINING_REGISTRY_KEY, TRAINING_BRANCHES_KEY, TRAINING_SYNC_KEY].forEach(k => props.deleteProperty(k));
+  Object.keys(trainingLinks_()).forEach(hid => {
+    try { removeTrainingMirrors_(ss_(hid), []); } catch (e) { Logger.log('Mirror cleanup skipped for ' + hid + ': ' + (e.message || e)); }
+  });
+  [TRAINING_REGISTRY_KEY, TRAINING_BRANCHES_KEY, TRAINING_LINKS_KEY, TRAINING_SYNC_KEY].forEach(k => props.deleteProperty(k));
   bustTraining_();
   classes_().forEach(c => { markDirty_(c.id); bumpVer_(c.id); });
   return getTrainingLink(token);
 }
 
-/** Pulls the latest training attendance right now for one class (or all linked classes) and recompiles it. */
+/**
+ * Pull: reads the linked Training Head workbook(s) right now and compiles every training session
+ * (DSA, Aptitude, ...) into the Master sheet of the matching class. Returns one result per class so the
+ * screen can show what was brought in and warn when no enrollment numbers matched.
+ */
 function syncTrainingNow(token, classId) {
   auth_(token, ['HOD']);
   bustTraining_();
   const list = classId ? [cls_(classId)] : classes_();
-  let touched = 0;
-  list.forEach(c => { if (trainingSource_(c.id)) { touched++; markDirty_(c.id); bumpVer_(c.id); } });
-  if (classId) return { classes: touched, summary: getSummary(token, classId) };
-  return { classes: touched };
+  const t0 = Date.now();
+  const results = [];
+  let lastSummary = null;
+  list.forEach(c => {
+    const src = trainingSource_(c.id);
+    if (!src) return;
+    const item = { classId: c.id, label: label_(c), sessions: src.subjects.map(r => r[1]), tabs: [], ok: true, error: '', matchedStudents: 0, trainingStudents: 0, students: 0 };
+    if (Date.now() - t0 > 200000) {
+      item.ok = false; item.error = 'Skipped because of the time limit. Press Pull again.';
+      markDirty_(c.id); bumpVer_(c.id);
+      results.push(item);
+      return;
+    }
+    try {
+      try { syncTrainingClass_(c.id); } catch (e) { /* the file clock is only an optimisation */ }
+      cache_().remove('dirty:' + c.id);
+      bumpVer_(c.id);
+      const r = lockedSoft_(() => compileClass_(c.id));
+      lastSummary = r;
+      const info = r.training || {};
+      item.tabs = info.tabs || [];
+      item.matchedStudents = info.matchedStudents || 0;
+      item.trainingStudents = info.trainingStudents || 0;
+      item.students = info.studentsTotal || 0;
+      item.error = info.error || '';
+      item.ok = !info.error;
+    } catch (e) {
+      item.ok = false; item.error = String(e.message || e).slice(0, 200);
+      markDirty_(c.id);
+    }
+    results.push(item);
+  });
+  const out = { classes: results.length, results };
+  if (classId) out.summary = lastSummary;
+  return out;
 }
 
 /* ================= FAST MASTER SHEET COMPILER & CACHE ================= */
@@ -1349,10 +1510,13 @@ function compileClass_(classId) {
   const training = trainingFor_(classId);
   const trn = training.rows;
   const stu = studentRows_(classId).sort((a, b) => numSort_(a[0], b[0]));
-  const built = masterTable_(stu, cls, trn, ext,
-    cls.map(r => sheetStats_(ss, r)), trn.map(r => sheetStats_(training.ss, r)), ext.map(r => sheetStats_(ss, r)));
+  const ts = trn.map(r => sheetStats_(training.ss, r));
+  const built = masterTable_(stu, cls, trn, ext, cls.map(r => sheetStats_(ss, r)), ts, ext.map(r => sheetStats_(ss, r)));
   const out = built.out;
   const trainingCols = built.hasTrn ? 2 : 0;
+  // How many of this class's students appear in the training sheets (matched by enrollment number).
+  const trainingEnrollments = {};
+  ts.forEach(x => Object.keys(x.p).forEach(e => { trainingEnrollments[e] = true; }));
 
   const sum = ss.getSheetByName('Master') || ss.insertSheet('Master');
   sum.clearContents();
@@ -1377,7 +1541,8 @@ function compileClass_(classId) {
   sum.setFrozenRows(2);
   sum.setFrozenColumns(3);
 
-  const result = { table: out, url: ss.getUrl() + '#gid=' + sum.getSheetId(), min: getMin_(), training: { linked: trainingCols > 0, sessions: trn.length, error: training.error } };
+  const mirroredTabs = trn.length && training.ss ? mirrorTrainingTabs_(ss, training) : [];
+  const result = { table: out, url: ss.getUrl() + '#gid=' + sum.getSheetId(), min: getMin_(), training: { linked: trn.length > 0, sessions: trn.length, names: trn.map(r => r[1]), tabs: mirroredTabs, matchedStudents: stu.filter(r => trainingEnrollments[r[0]]).length, trainingStudents: Object.keys(trainingEnrollments).length, studentsTotal: stu.length, error: training.error } };
   try { cache_().put('sum:' + classId + ':' + ver_(classId), pack_(result), 1800); } catch (e) {}
   return result;
 }
